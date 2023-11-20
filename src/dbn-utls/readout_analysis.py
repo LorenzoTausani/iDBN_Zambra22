@@ -598,22 +598,23 @@ def plot_relearning(Readouts, yl = [0.75, 1],lab_sz = 30, leg_on =1, legend_labe
   # Generate x-axis ticks from 0 to 100 with steps of 5
   x_ticks = np.concatenate((np.array([0,0.5,1]), np.arange(5, 51, 5)))
   my_matrix = Readouts
+  nCols = Readouts.shape[1]//2
 
   # Separate the matrix into subsets of columns
-  subset1 = my_matrix[:, :4]
-  subset2 = my_matrix[:, -4:]
+  subset1 = my_matrix[:, :nCols]
+  subset2 = my_matrix[:, -nCols:]
 
   # Create a figure and axes
   fig, ax = plt.subplots(figsize = (20,20))
 
   # Plot each column of the first subset with red color and different line styles
   for i, column in enumerate(subset1.T):
-      line_style = ['-', '--', ':', '-.'][i % 4]  # Cycle through line styles
+      line_style = ['-', '--', ':', '-.'][i % nCols]  # Cycle through line styles
       ax.plot(x_ticks, column, color='red', linestyle=line_style, lw=4)
 
   # Plot each column of the second subset with blue color and different line styles
   for i, column in enumerate(subset2.T):
-      line_style = ['-', '--', ':', '-.'][i % 4]  # Cycle through line styles
+      line_style = ['-', '--', ':', '-.'][i % nCols]  # Cycle through line styles
       ax.plot(x_ticks, column, color='blue', linestyle=line_style, lw=4)
 
   x_ticks_l = ['1b', 'N/2b', '1']+[str(i) for i in range(5, 51, 5)]
