@@ -681,9 +681,18 @@ def readout_epoch0_1andHalfBatches(dbn,train_dataset_retraining_ds, test_dataset
     R_list.append(readout_acc_V_DIGITS[-1])
   return R_list
 
-def readout_comparison(dbn, classifier,MNIST_train_dataset,MNIST_test_dataset,mixing_type_options = ['[]','origMNIST', 'chimeras', 'chimeras'], retr_DS = 'EMNIST', H_type = ['det', 'det', 'det', 'det']):
+def readout_comparison(dbn, classifier,MNIST_train_dataset,MNIST_test_dataset,mixing_type_options = ['[]','origMNIST', 'chimeras', 'chimeras'], retr_DS = 'EMNIST', H_type = ['det', 'det', 'det', 'det'], new_retrain_dataV = [False, False, False, False]):
+  new_retrain_dataV_list = []
+  for nR in new_retrain_dataV:
+     if nR:
+        new_retrain_dataV_list.append('1g4e')
+     else:
+        new_retrain_dataV_list.append('')
+    
   if not(isinstance(H_type, list)):
      H_type = [H_type]*len(mixing_type_options)
+  if not(isinstance(new_retrain_dataV, list)):
+     new_retrain_dataV = [new_retrain_dataV]*len(mixing_type_options)
   Readouts = np.zeros((11+3,len(mixing_type_options)*2))
   for id_mix,mix_type in enumerate(mixing_type_options):
     H_type_it = H_type[id_mix]
@@ -707,24 +716,22 @@ def readout_comparison(dbn, classifier,MNIST_train_dataset,MNIST_test_dataset,mi
     Readouts[:3,id_mix] = [R[i] for i in i_MNIST]
     if mix_type==[]:
       mix_type='[]'
-    if id_mix < len(mixing_type_options) -1:
-      Readout_last_layer_MNIST, Readout_last_layer_RETRAINING_DS,_ = relearning(retrain_ds_type = retr_DS, mixing_type =mix_type, n_steps_generation=100, new_retrain_data = False, selection_gen = False, correction_type = 'other', l_par = 5, last_layer_sz=1000, H_type = H_type_it)
-    else:
-      print('chimera every it')
-      Readout_last_layer_MNIST, Readout_last_layer_RETRAINING_DS,_ = relearning(retrain_ds_type = retr_DS, mixing_type =mix_type, n_steps_generation=100, new_retrain_data = True, selection_gen = False, correction_type = 'other', l_par = 1, last_layer_sz=1000, H_type = H_type_it)
+
+    Readout_last_layer_MNIST, Readout_last_layer_RETRAINING_DS,_ = relearning(retrain_ds_type = retr_DS, mixing_type =mix_type, n_steps_generation=100, new_retrain_data = new_retrain_dataV[id_mix], selection_gen = False, correction_type = 'other', l_par = 1, last_layer_sz=1000, H_type = H_type_it)
     Readouts[3:,id_mix] = Readout_last_layer_MNIST
     Readouts[3:,id_mix+len(mixing_type_options)] = Readout_last_layer_RETRAINING_DS
 
   D_names = {'[]':'seq', 'origMNIST': 'int_orig', 'chimeras':'int_chim', 'lbl_bias': 'int_LB'}
+
   # Define column names
-  columns = ['MNIST ' + D_names[m] + '_H' + h for m, h in zip(mixing_type_options, H_type)] + [retr_DS +' '+ D_names[m] + '_H' + h for m, h in zip(mixing_type_options, H_type)]
+  columns = ['MNIST ' + D_names[m] + '_H' + h +'_'+ nR for m, h,nR in zip(mixing_type_options, H_type,new_retrain_dataV_list)] + [retr_DS +' '+ D_names[m] + '_H' + h +'_'+ nR for m, h,nR in zip(mixing_type_options, H_type,new_retrain_dataV_list)]
 
   # Convert NumPy array to Pandas DataFrame
   df = pd.DataFrame(Readouts, columns=columns)
   
   Zambra_folder_drive = '/content/gdrive/My Drive/ZAMBRA_DBN/'
   # Save DataFrame to Excel file
-  tipo = ['M'+D_names[m] + '_H' + h for m, h in zip(mixing_type_options, H_type)]
+  tipo = ['M'+D_names[m] + '_H' + h +'_'+ nR for m, h,nR in zip(mixing_type_options, H_type,new_retrain_dataV_list)]
   tipo = '_'.join(tipo)
   file_path = os.path.join(Zambra_folder_drive, "Readouts_" + retr_DS + tipo + ".xlsx")
 
