@@ -282,6 +282,8 @@ def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, d
     #gen_hidden_100rep = gen_hidden_100rep + noise
     elif H_type == 'stoch':
       original_W = dbn.weights_inv
+      tensor_size = (1000, n_samples * 10)
+      gen_hidden_100rep = torch.rand(tensor_size)
 
       for it in range(n_samples):
         #SD = random.uniform(0, float(torch.std(original_W)))
