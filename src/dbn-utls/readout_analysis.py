@@ -722,9 +722,15 @@ def readout_comparison(dbn, classifier,MNIST_train_dataset,MNIST_test_dataset,mi
 
   # Convert NumPy array to Pandas DataFrame
   df = pd.DataFrame(Readouts, columns=columns)
-
+  
+  Zambra_folder_drive = '/content/gdrive/My Drive/ZAMBRA_DBN/'
   # Save DataFrame to Excel file
-  df.to_excel("Readouts_"+retr_DS+".xlsx", index=False)
+  tipo = ['M'+D_names[m] + '_H' + h for m, h in zip(mixing_type_options, H_type)]
+  tipo = '_'.join(tipo)
+  file_path = os.path.join(Zambra_folder_drive, "Readouts_" + retr_DS + tipo + ".xlsx")
+
+  df.to_excel(file_path, index=False)
+  
 
   ix = [0,1,2,4,5,6,7,8,9,10,11,12,13]
   plot_relearning(Readouts[ix,:], yl = [0.7, 1], legend_labels = columns)
