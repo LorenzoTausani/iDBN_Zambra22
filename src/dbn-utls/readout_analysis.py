@@ -682,17 +682,17 @@ def readout_epoch0_1andHalfBatches(dbn,train_dataset_retraining_ds, test_dataset
   return R_list
 
 def readout_comparison(dbn, classifier,MNIST_train_dataset,MNIST_test_dataset,mixing_type_options = ['[]','origMNIST', 'chimeras', 'chimeras'], retr_DS = 'EMNIST', H_type = ['det', 'det', 'det', 'det'], new_retrain_dataV = [False, False, False, False]):
+    
+  if not(isinstance(H_type, list)):
+     H_type = [H_type]*len(mixing_type_options)
+  if not(isinstance(new_retrain_dataV, list)):
+     new_retrain_dataV = [new_retrain_dataV]*len(mixing_type_options)
   new_retrain_dataV_list = []
   for nR in new_retrain_dataV:
      if nR:
         new_retrain_dataV_list.append('1g4e')
      else:
         new_retrain_dataV_list.append('')
-    
-  if not(isinstance(H_type, list)):
-     H_type = [H_type]*len(mixing_type_options)
-  if not(isinstance(new_retrain_dataV, list)):
-     new_retrain_dataV = [new_retrain_dataV]*len(mixing_type_options)
   Readouts = np.zeros((11+3,len(mixing_type_options)*2))
   for id_mix,mix_type in enumerate(mixing_type_options):
     H_type_it = H_type[id_mix]
