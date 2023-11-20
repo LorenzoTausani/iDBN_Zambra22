@@ -186,7 +186,7 @@ def mixing_data_wihin_batch(half_MNIST,half_retraining_ds):
   return mix_retraining_ds_MNIST
   
 
-def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, dbn=[], classifier=[], n_steps_generation = 10, ds_type = 'EMNIST', half_MNIST_gen=True, Type_gen = 'chimeras', selection_gen = False, correction_type = 'frequency'):
+def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, dbn=[], classifier=[], n_steps_generation = 10, ds_type = 'EMNIST', half_MNIST_gen=True, Type_gen = 'chimeras', H_type = 'det', selection_gen = False, correction_type = 'frequency'):
   #Type_gen = 'chimeras'/'lbl_bias'/'mix'
   #NOTA: il labelling dell'EMNIST by class ha 62 labels: le cifre (0-9), lettere MAUSCOLE (10-36), lettere MINUSCOLE(38-62)
   #20,000 uppercase letters from the first 10 EMNIST classes.
@@ -267,34 +267,39 @@ def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, d
      half_MNIST = MNIST_train_dataset['data'][:half_batches,:,:].to('cuda')
   else:
     compute_inverseW_for_lblBiasing_ZAMBRA(dbn,MNIST_train_dataset)
-    for dig in range(dbn.Num_classes): #at the end of this loop, you have one example of label biasing per class
-        g_H = label_biasing_ZAMBRA(dbn, on_digits=dig, topk = -1)
-        if dig == 0:
-            g_H0to9 = g_H
-        else:
-            g_H0to9 = torch.hstack((g_H0to9,g_H)) #final size: [1000, 10]
-    n_samples = math.ceil(10000*coeff/(10*n_steps_generation))
-    gen_hidden_100rep = g_H0to9.repeat(1,n_samples)
-    
-    gen_hidden_100rep = torch.rand((1000, n_samples*10)) #funziona bene per generazioni ad ogni iterazione
+    if H_type == 'det':
+      for dig in range(dbn.Num_classes): #at the end of this loop, you have one example of label biasing per class
+          g_H = label_biasing_ZAMBRA(dbn, on_digits=dig, topk = -1)
+          if dig == 0:
+              g_H0to9 = g_H
+          else:
+              g_H0to9 = torch.hstack((g_H0to9,g_H)) #final size: [1000, 10]
+      n_samples = math.ceil(10000*coeff/(10*n_steps_generation))
+      gen_hidden_100rep = g_H0to9.repeat(1,n_samples)
+      
     #NON FUNZIONA:
     #noise = torch.normal(mean=0.0, std=1, size=(1000, n_samples*10))
     #gen_hidden_100rep = gen_hidden_100rep + noise
+    elif H_type == 'stoch':
+      original_W = dbn.weights_inv
 
-    original_W = dbn.weights_inv
+      for it in range(n_samples):
+        #SD = random.uniform(0, float(torch.std(original_W)))
+        SD = float(torch.std(original_W))
+        dbn.weights_inv = original_W + torch.normal(mean=0.0, std=SD, size=dbn.weights_inv.shape)
 
-    for it in range(n_samples):
-      #SD = random.uniform(0, float(torch.std(original_W)))
-      SD = float(torch.std(original_W))
-      dbn.weights_inv = original_W + torch.normal(mean=0.0, std=SD, size=dbn.weights_inv.shape)
+        for dig in range(dbn.Num_classes):
+          g_H = label_biasing_ZAMBRA(dbn, on_digits=dig, topk = -1)
+          if dig == 0:
+            g_H0to9 = g_H
+          else:
+            g_H0to9 = torch.hstack((g_H0to9,g_H))
+        gen_hidden_100rep[:,((it+1)*10)-10:((it+1)*10)] = g_H0to9
 
-      for dig in range(dbn.Num_classes):
-        g_H = label_biasing_ZAMBRA(dbn, on_digits=dig, topk = -1)
-        if dig == 0:
-          g_H0to9 = g_H
-        else:
-          g_H0to9 = torch.hstack((g_H0to9,g_H))
-      gen_hidden_100rep[:,((it+1)*10)-10:((it+1)*10)] = g_H0to9
+    else:
+      tensor_size = (1000, n_samples * 10)
+      # Generate the tensor of random values from uniform distribution
+      gen_hidden_100rep = torch.rand(tensor_size)
 
     VStack_labels=torch.tensor(range(dbn.Num_classes), device = 'cuda')
     VStack_labels=VStack_labels.repeat(n_samples)
@@ -432,7 +437,7 @@ def get_ridge_classifiers(MNIST_Train_DS, MNIST_Test_DS, Force_relearning = True
 
 
 
-def relearning(retrain_ds_type = 'EMNIST', mixing_type =[], n_steps_generation=10, new_retrain_data = False, selection_gen = False, correction_type = 'frequency', l_par = 5,  last_layer_sz = 1000):
+def relearning(retrain_ds_type = 'EMNIST', mixing_type =[], n_steps_generation=10, new_retrain_data = False, selection_gen = False, correction_type = 'frequency', l_par = 5,  last_layer_sz = 1000, H_type='det'):
     DEVICE='cuda'
     dbn,MNISTtrain_ds, MNISTtest_ds,classifier= tool_loader_ZAMBRA(DEVICE, only_data = False,Load_DBN_yn = 1, last_layer_sz=last_layer_sz)
     mixing_type_options = ['origMNIST', 'lbl_bias', 'chimeras','[]']
@@ -454,7 +459,7 @@ def relearning(retrain_ds_type = 'EMNIST', mixing_type =[], n_steps_generation=1
     else:
        half_MNIST_gen_option = True
 
-    Retrain_ds,Retrain_test_ds,mix_retrain_ds = get_retraining_data(MNISTtrain_ds,{},dbn, classifier,n_steps_generation = n_steps_generation,  ds_type = retrain_ds_type, half_MNIST_gen=half_MNIST_gen_option, Type_gen = mixing_type, selection_gen = selection_gen, correction_type = correction_type)
+    Retrain_ds,Retrain_test_ds,mix_retrain_ds = get_retraining_data(MNISTtrain_ds,{},dbn, classifier,n_steps_generation = n_steps_generation,  ds_type = retrain_ds_type, half_MNIST_gen=half_MNIST_gen_option, Type_gen = mixing_type,H_type = H_type, selection_gen = selection_gen, correction_type = correction_type)
     MNIST_classifier_list= get_ridge_classifiers(MNISTtrain_ds, MNISTtest_ds,Force_relearning = False, last_layer_sz=last_layer_sz)
 
     
@@ -498,7 +503,7 @@ def relearning(retrain_ds_type = 'EMNIST', mixing_type =[], n_steps_generation=1
     for iteration in range(nr_iter_training):
         for ep in range(inner_loop_epochs):
           if new_retrain_data == True:
-            mix_retrain_ds = get_retraining_data(MNISTtrain_ds,Retrain_ds,dbn, classifier,n_steps_generation = n_steps_generation,  ds_type = retrain_ds_type, half_MNIST_gen=half_MNIST_gen_option, Type_gen = mixing_type, selection_gen = selection_gen, correction_type = correction_type)
+            mix_retrain_ds = get_retraining_data(MNISTtrain_ds,Retrain_ds,dbn, classifier,n_steps_generation = n_steps_generation,  ds_type = retrain_ds_type, half_MNIST_gen=half_MNIST_gen_option, Type_gen = mixing_type,H_type =H_type, selection_gen = selection_gen, correction_type = correction_type)
             Xtrain = mix_retrain_ds.to(DEVICE)
             print(ep)
           dbn.train(Xtrain, Xtest, Ytrain, Ytest, LPARAMS, readout = READOUT, num_discr = NUM_DISCR)
