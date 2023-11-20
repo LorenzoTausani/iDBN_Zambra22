@@ -591,7 +591,7 @@ for lp in EMNIST_prototypes:
 
 '''
 
-def plot_relearning(Readouts, yl = [0.75, 1],lab_sz = 30, leg_on =1):
+def plot_relearning(Readouts, yl = [0.75, 1],lab_sz = 30, leg_on =1, legend_labels=[]):
 
   # Assuming your matrix is named 'my_matrix'
   # Generate x-axis ticks from 0 to 100 with steps of 5
@@ -626,7 +626,8 @@ def plot_relearning(Readouts, yl = [0.75, 1],lab_sz = 30, leg_on =1):
   ax.set_ylim(yl)
 
   # Create the legend
-  legend_labels = ['Sequential learning', 'Interleaved learning - MNIST data', 'Interleaved learning - Label biasing', 'Interleaved learning - Chimeras']
+  if legend_labels == []:
+    legend_labels = ['Sequential learning', 'Interleaved learning - MNIST data', 'Interleaved learning - Label biasing', 'Interleaved learning - Chimeras']
   legend_handles = [plt.Line2D([], [], color='black', linestyle=style) for style in ['-', '--', ':', '-.']]
   if leg_on ==1:
     ax.legend(legend_handles, legend_labels, loc='upper center', bbox_to_anchor=(0.5, -0.15), fontsize=lab_sz, ncol=len(legend_labels)//2)
@@ -636,3 +637,94 @@ def plot_relearning(Readouts, yl = [0.75, 1],lab_sz = 30, leg_on =1):
 
   # Show the plot
   plt.show()
+
+def readout_epoch0_1andHalfBatches(dbn,train_dataset_retraining_ds, test_dataset_retraining_ds,train_dataset,test_dataset, mix_ds = []):
+  DEVICE = 'cuda'
+  DATASET_ID = 'MNIST'
+  Zambra_folder_drive = '/content/gdrive/My Drive/ZAMBRA_DBN/'
+  with open(os.path.join(Zambra_folder_drive, f'lparams-{DATASET_ID.lower()}.json'), 'r') as filestream:
+    LPARAMS = json.load(filestream)
+  Xtest  = test_dataset_retraining_ds['data'].to(DEVICE)
+  Ytest  = test_dataset_retraining_ds['labels'].to(DEVICE)
+
+  MNIST_classifier_list= get_ridge_classifiers(train_dataset,test_dataset,Force_relearning = False, last_layer_sz=1000)
+
+  R_list=[]
+  if mix_ds == []:
+    n_in = [1,train_dataset_retraining_ds['data'].shape[0]//2,train_dataset_retraining_ds['data'].shape[0]]
+  else:
+    n_in = [1,mix_ds.shape[0]//2,mix_ds.shape[0]]
+  LPARAMS['EPOCHS'] = 1
+  for i in n_in:
+    dbn,_, _,_= tool_loader_ZAMBRA(DEVICE, only_data = False,last_layer_sz=1000, Load_DBN_yn = 1)
+
+    if mix_ds ==[]:
+      mb_data = train_dataset_retraining_ds['data'][:i,:,:]
+      mb_lbls = train_dataset_retraining_ds['labels'][:i,:,:]
+      mb_dataset = {'data':mb_data,'labels':mb_lbls}
+
+    else:
+      mb_data = mix_ds[:i,:,:]
+      mb_lbls = mix_ds[:i,:,:]
+
+
+    dbn.train(mb_data, Xtest, mb_lbls, Ytest, LPARAMS, readout = False, num_discr = False)
+
+    if not(mix_ds ==[]):
+      mb_data = train_dataset_retraining_ds['data'][:i,:,:]
+      mb_lbls = train_dataset_retraining_ds['labels'][:i,:,:]
+      mb_dataset = {'data':mb_data,'labels':mb_lbls}
+    readout_acc_V, classifier_list = readout_V_to_Hlast(dbn,mb_dataset,test_dataset_retraining_ds)
+
+    readout_acc_V_DIGITS,_ = readout_V_to_Hlast(dbn,train_dataset,test_dataset,existing_classifier_list = MNIST_classifier_list)
+    print(readout_acc_V)
+    R_list.append(readout_acc_V[-1])
+    R_list.append(readout_acc_V_DIGITS[-1])
+  return R_list
+
+def readout_comparison(dbn, classifier,MNIST_train_dataset,MNIST_test_dataset,mixing_type_options = ['[]','origMNIST', 'chimeras', 'chimeras'], retr_DS = 'EMNIST', H_type = ['det', 'det', 'det', 'det']):
+  if not(isinstance(H_type, list)):
+     H_type = [H_type]*len(mixing_type_options)
+  Readouts = np.zeros((11+3,len(mixing_type_options)*2))
+  for id_mix,mix_type in enumerate(mixing_type_options):
+    H_type_it = H_type[id_mix]
+    if mix_type=='[]':
+        mix_type=[]
+
+    if mix_type == 'origMNIST':
+        half_MNIST_gen_option = False
+    else:
+        half_MNIST_gen_option = True
+
+    Retrain_ds,Retrain_test_ds,mix_retrain_ds = get_retraining_data(MNIST_train_dataset,{},dbn, classifier,100,  ds_type = retr_DS, half_MNIST_gen=half_MNIST_gen_option, Type_gen = mix_type, selection_gen = False, correction_type = 'frequency')
+
+    if mix_type=='[]':
+      R = readout_epoch0_1andHalfBatches(dbn,Retrain_ds,Retrain_test_ds,MNIST_train_dataset,MNIST_test_dataset, mix_ds = [])
+    else:
+      R = readout_epoch0_1andHalfBatches(dbn,Retrain_ds,Retrain_test_ds,MNIST_train_dataset,MNIST_test_dataset, mix_ds = mix_retrain_ds)
+    i_Retr = [0,2,4]
+    i_MNIST = [1,3,5]
+    Readouts[:3,id_mix+len(mixing_type_options)] = [R[i] for i in i_Retr]
+    Readouts[:3,id_mix] = [R[i] for i in i_MNIST]
+    if mix_type==[]:
+      mix_type='[]'
+    if id_mix < len(mixing_type_options) -1:
+      Readout_last_layer_MNIST, Readout_last_layer_RETRAINING_DS,_ = relearning(retrain_ds_type = retr_DS, mixing_type =mix_type, n_steps_generation=100, new_retrain_data = False, selection_gen = False, correction_type = 'other', l_par = 5, last_layer_sz=1000, H_type = H_type_it)
+    else:
+      print('chimera every it')
+      Readout_last_layer_MNIST, Readout_last_layer_RETRAINING_DS,_ = relearning(retrain_ds_type = retr_DS, mixing_type =mix_type, n_steps_generation=100, new_retrain_data = True, selection_gen = False, correction_type = 'other', l_par = 1, last_layer_sz=1000, H_type = H_type_it)
+    Readouts[3:,id_mix] = Readout_last_layer_MNIST
+    Readouts[3:,id_mix+len(mixing_type_options)] = Readout_last_layer_RETRAINING_DS
+
+  D_names = {'[]':'seq', 'origMNIST': 'int_orig', 'chimeras':'int_chim', 'lbl_bias': 'int_LB'}
+  # Define column names
+  columns = ['MNIST ' + D_names[m] + '_H' + h for m, h in zip(mixing_type_options, H_type)] + [retr_DS +' '+ D_names[m] + '_H' + h for m, h in zip(mixing_type_options, H_type)]
+
+  # Convert NumPy array to Pandas DataFrame
+  df = pd.DataFrame(Readouts, columns=columns)
+
+  # Save DataFrame to Excel file
+  df.to_excel("Readouts_"+retr_DS+".xlsx", index=False)
+
+  ix = [0,1,2,4,5,6,7,8,9,10,11,12,13]
+  plot_relearning(Readouts[ix,:], yl = [0.7, 1], legend_labels = columns)
