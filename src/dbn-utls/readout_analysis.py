@@ -267,6 +267,7 @@ def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, d
      half_MNIST = MNIST_train_dataset['data'][:half_batches,:,:].to('cuda')
   else:
     compute_inverseW_for_lblBiasing_ZAMBRA(dbn,MNIST_train_dataset)
+    n_samples = math.ceil(10000*coeff/(10*n_steps_generation))
     if H_type == 'det':
       for dig in range(dbn.Num_classes): #at the end of this loop, you have one example of label biasing per class
           g_H = label_biasing_ZAMBRA(dbn, on_digits=dig, topk = -1)
@@ -274,7 +275,6 @@ def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, d
               g_H0to9 = g_H
           else:
               g_H0to9 = torch.hstack((g_H0to9,g_H)) #final size: [1000, 10]
-      n_samples = math.ceil(10000*coeff/(10*n_steps_generation))
       gen_hidden_100rep = g_H0to9.repeat(1,n_samples)
       
     #NON FUNZIONA:
@@ -434,7 +434,6 @@ def get_ridge_classifiers(MNIST_Train_DS, MNIST_Test_DS, Force_relearning = True
   #     EMNIST_classifier_list = pickle.load(file)# Load the list of classifiers from the file
   #return MNIST_classifier_list, EMNIST_classifier_list
   return MNIST_classifier_list
-
 
 
 def relearning(retrain_ds_type = 'EMNIST', mixing_type =[], n_steps_generation=10, new_retrain_data = False, selection_gen = False, correction_type = 'frequency', l_par = 5,  last_layer_sz = 1000, H_type='det'):
