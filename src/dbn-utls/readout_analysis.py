@@ -590,3 +590,49 @@ for lp in EMNIST_prototypes:
 
 
 '''
+
+def plot_relearning(Readouts, yl = [0.75, 1],lab_sz = 30, leg_on =1):
+
+  # Assuming your matrix is named 'my_matrix'
+  # Generate x-axis ticks from 0 to 100 with steps of 5
+  x_ticks = np.concatenate((np.array([0,0.5,1]), np.arange(5, 51, 5)))
+  my_matrix = Readouts
+
+  # Separate the matrix into subsets of columns
+  subset1 = my_matrix[:, :4]
+  subset2 = my_matrix[:, -4:]
+
+  # Create a figure and axes
+  fig, ax = plt.subplots(figsize = (20,20))
+
+  # Plot each column of the first subset with red color and different line styles
+  for i, column in enumerate(subset1.T):
+      line_style = ['-', '--', ':', '-.'][i % 4]  # Cycle through line styles
+      ax.plot(x_ticks, column, color='red', linestyle=line_style, lw=4)
+
+  # Plot each column of the second subset with blue color and different line styles
+  for i, column in enumerate(subset2.T):
+      line_style = ['-', '--', ':', '-.'][i % 4]  # Cycle through line styles
+      ax.plot(x_ticks, column, color='blue', linestyle=line_style, lw=4)
+
+  x_ticks_l = ['1b', 'N/2b', '1']+[str(i) for i in range(5, 51, 5)]
+
+  # Set the x-axis ticks
+  ax.set_xticks(np.arange(0, 51, 5))
+
+  # Set labels and title with increased font size
+  ax.set_xlabel('Retraining epoch', fontsize=lab_sz)
+  ax.set_ylabel('Readout', fontsize=lab_sz)
+  ax.set_ylim(yl)
+
+  # Create the legend
+  legend_labels = ['Sequential learning', 'Interleaved learning - MNIST data', 'Interleaved learning - Label biasing', 'Interleaved learning - Chimeras']
+  legend_handles = [plt.Line2D([], [], color='black', linestyle=style) for style in ['-', '--', ':', '-.']]
+  if leg_on ==1:
+    ax.legend(legend_handles, legend_labels, loc='upper center', bbox_to_anchor=(0.5, -0.15), fontsize=lab_sz, ncol=len(legend_labels)//2)
+
+  # Increase tick label font size
+  ax.tick_params(labelsize=lab_sz)
+
+  # Show the plot
+  plt.show()
