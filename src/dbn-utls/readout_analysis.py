@@ -8,6 +8,7 @@ import json
 from sklearn.metrics import accuracy_score
 import Study_generativity
 from Study_generativity import *
+from matplotlib.ticker import StrMethodFormatter
 
 def readout_V_to_Hlast(dbn,train_dataset,test_dataset, DEVICE='cuda', existing_classifier_list = []):
   classifier_list = []
@@ -606,6 +607,8 @@ def plot_relearning(Readouts, yl = [0.75, 1],lab_sz = 30, leg_on =1, legend_labe
 
   # Create a figure and axes
   fig, ax = plt.subplots(figsize = (20,20))
+  plt.gca().yaxis.set_major_formatter(StrMethodFormatter('{x:,.2f}'))
+
 
   # Plot each column of the first subset with red color and different line styles
   for i, column in enumerate(subset1.T):
