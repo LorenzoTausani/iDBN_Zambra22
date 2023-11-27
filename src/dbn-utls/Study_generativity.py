@@ -656,7 +656,7 @@ def Chimeras_nr_visited_states_ZAMBRA(model, VGG_cl, Ian =[], topk=149, apprx=1,
         my_dataframe.to_excel(filename, index=False)
         # download the file
         files.download(filename)
-    Transition_matrix_tensor = torch.empty((11, 11, 50), device='cuda')
+    Transition_matrix_tensor = torch.zeros((11, 11, 55), device='cuda')
     c_Tmat = 0
     n_digits = model.Num_classes
     if Ian!=[]:
@@ -755,6 +755,7 @@ def Chimeras_nr_visited_states_ZAMBRA(model, VGG_cl, Ian =[], topk=149, apprx=1,
       plt.show()
 
     if n_digits==10:
+      print('final c_Tmat',c_Tmat)
       return Vis_states_mat, Vis_states_err,Non_digit_mat,Non_digit_err, Transition_matrix_tensor
     else:
       return Vis_states_mat, Vis_states_err
