@@ -656,7 +656,8 @@ def Chimeras_nr_visited_states_ZAMBRA(model, VGG_cl, Ian =[], topk=149, apprx=1,
         my_dataframe.to_excel(filename, index=False)
         # download the file
         files.download(filename)
-
+    Transition_matrix_tensor = torch.empty((11, 11, 50), device='cuda')
+    c_Tmat = 0
     n_digits = model.Num_classes
     if Ian!=[]:
       fN='Visited_digits_k' + str(Ian.top_k_Hidden)+'.xlsx'
@@ -681,6 +682,8 @@ def Chimeras_nr_visited_states_ZAMBRA(model, VGG_cl, Ian =[], topk=149, apprx=1,
         for row in range(n_digits):
           for col in range(row,n_digits):
             d, df_average,df_sem, Transition_matrix_rowNorm = Ian.generate_chimera_lbl_biasing(VGG_cl,elements_of_interest = [row,col], nr_of_examples = nr_sample_generated, temperature = 1, plot=0, entropy_correction= entropy_correction)
+            Transition_matrix_tensor[:,:, c_Tmat] = Transition_matrix_rowNorm
+            c_Tmat = c_Tmat+1
             Vis_states_mat[row,col]=df_average.Nr_visited_states[0]
             Vis_states_err[row,col]=df_sem.Nr_visited_states[0]
             if n_digits==10:
@@ -696,6 +699,8 @@ def Chimeras_nr_visited_states_ZAMBRA(model, VGG_cl, Ian =[], topk=149, apprx=1,
           d = generate_from_hidden_ZAMBRA(model, gen_hidden_rep , nr_gen_steps=100)
           d = Classifier_accuracy(d, VGG_cl,model, Thresholding_entropy=entropy_correction, labels=[], Batch_sz= 100, plot=0, dS=30, l_sz=3)
           df_average,df_sem, Transition_matrix_rowNorm = classification_metrics(d,model,Plot=0,dS=50,Ian=1)
+          Transition_matrix_tensor[:,:, c_Tmat] = Transition_matrix_rowNorm
+          c_Tmat = c_Tmat+1
           Vis_states_mat[combination[0],combination[1]]=df_average.Nr_visited_states[0]
           Vis_states_err[combination[0],combination[1]]=df_sem.Nr_visited_states[0]
           if n_digits==10:
@@ -750,7 +755,7 @@ def Chimeras_nr_visited_states_ZAMBRA(model, VGG_cl, Ian =[], topk=149, apprx=1,
       plt.show()
 
     if n_digits==10:
-      return Vis_states_mat, Vis_states_err,Non_digit_mat,Non_digit_err
+      return Vis_states_mat, Vis_states_err,Non_digit_mat,Non_digit_err, Transition_matrix_tensor
     else:
       return Vis_states_mat, Vis_states_err
 
