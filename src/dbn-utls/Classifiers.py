@@ -169,19 +169,22 @@ def CelebA_ResNet_classifier(ds_loaders = [], num_classes = 4, num_epochs = 20, 
   
 def Classifier_accuracy(input_dict, classifier,model, Thresholding_entropy=[], labels=[], cl_lbls =[], Batch_sz= 100, plot=1, dS=30, l_sz=3):
   classifier = classifier.to('cuda')
-  #plot = 2 -> only digitwise accuracy #NOT USED
-  if Thresholding_entropy!=[]: #NOT USED
-    Thresholding_entropy = torch.mean(Thresholding_entropy) + 2*torch.std(Thresholding_entropy)
+  #plot = 2 -> only classwise accuracy #NOT USED
+
+  #if Thresholding_entropy!=[]: #NOT USED
+  #  Thresholding_entropy = torch.mean(Thresholding_entropy) + 2*torch.std(Thresholding_entropy)
+
   input_data = input_dict['vis_states']
   image_side = int(np.sqrt(input_data.size()[1])) 
   #input_data = nr_examples x 784 (i.e. image size) x nr_steps
   
   Cl_pred_matrix = torch.zeros(input_data.size()[0],input_data.size()[2], device=model.DEVICE) #numbers of samples to generate x number of generation steps
-  if not(image_side==64): #if images are not from the CelebA dataset...
-    Pred_entropy_mat = torch.zeros(input_data.size()[0],input_data.size()[2], device=model.DEVICE)
-    digitwise_avg_entropy = torch.zeros(model.Num_classes,input_data.size()[2], device=model.DEVICE)
-    digitwise_sem_entropy = torch.zeros(model.Num_classes,input_data.size()[2], device=model.DEVICE)
-  digitwise_acc = torch.zeros(model.Num_classes,input_data.size()[2], device=model.DEVICE)  #number of classes x number of generation steps
+  # NOT USED
+  # if not(image_side==64): #if images are not from the CelebA dataset...
+  #   Pred_entropy_mat = torch.zeros(input_data.size()[0],input_data.size()[2], device=model.DEVICE)
+  #   classwise_avg_entropy = torch.zeros(model.Num_classes,input_data.size()[2], device=model.DEVICE)
+  #   classwise_sem_entropy = torch.zeros(model.Num_classes,input_data.size()[2], device=model.DEVICE)
+  classwise_acc = torch.zeros(model.Num_classes,input_data.size()[2], device=model.DEVICE)  #number of classes x number of generation steps
 
   acc = torch.zeros(input_data.size()[2]) #len = number of generation steps
   if labels==[]:
@@ -210,9 +213,10 @@ def Classifier_accuracy(input_dict, classifier,model, Thresholding_entropy=[], l
       
       with torch.no_grad():
         pred_vals=classifier(input) #predictions of the classifier
-      if not(image_side==64): #if you are using MNIST
-        Pred_entropy = torch.distributions.Categorical(probs =pred_vals[:,:10]).entropy()
-        Pred_entropy_mat[index:index+Batch_sz,step] = Pred_entropy
+      # NOT USED
+      # if not(image_side==64): #if you are using MNIST
+      #   Pred_entropy = torch.distributions.Categorical(probs =pred_vals[:,:10]).entropy()
+      #   Pred_entropy_mat[index:index+Batch_sz,step] = Pred_entropy
 
       _, inds = torch.max(pred_vals,dim=1) #find the predicted classes
       Cl_pred_matrix[index:index+Batch_sz,step] = inds #store the predictions into Cl_pred_matrix
@@ -223,33 +227,35 @@ def Classifier_accuracy(input_dict, classifier,model, Thresholding_entropy=[], l
     
     for digit in range(model.Num_classes): #for each class
       l = torch.where(labels == digit) #check the indices of that particular class
-      if not(image_side==64): #only for MNIST
-        digitwise_avg_entropy[digit,step] = torch.mean(Pred_entropy_mat[l[0],step])
-        digitwise_sem_entropy[digit,step] = torch.std(Pred_entropy_mat[l[0],step])/math.sqrt(l[0].size()[0])
+      #NOT USED
+      # if not(image_side==64): #only for MNIST
+      #   classwise_avg_entropy[digit,step] = torch.mean(Pred_entropy_mat[l[0],step])
+      #   classwise_sem_entropy[digit,step] = torch.std(Pred_entropy_mat[l[0],step])/math.sqrt(l[0].size()[0])
 
       inds_digit = Cl_pred_matrix[l[0],step] #finds the predictions for that specific class in that generation step
-      digitwise_acc[digit,step] = torch.sum(inds_digit.to(model.DEVICE)==labels[l[0]])/l[0].size()[0] #compute the digitwise accuracy for that particular digit
-  if not(image_side==64): #only for MNIST
-    MEAN_entropy = torch.mean(Pred_entropy_mat,0)
-    SEM_entropy = torch.std(Pred_entropy_mat,0)/math.sqrt(input_data.size()[0])
+      classwise_acc[digit,step] = torch.sum(inds_digit.to(model.DEVICE)==labels[l[0]])/l[0].size()[0] #compute the classwise accuracy for that particular digit
+  #NOT USED
+  # if not(image_side==64): #only for MNIST
+  #   MEAN_entropy = torch.mean(Pred_entropy_mat,0)
+  #   SEM_entropy = torch.std(Pred_entropy_mat,0)/math.sqrt(input_data.size()[0])
 
-    if Thresholding_entropy!=[]: #NOT USED
-      #  Entropy_mat_NN = Pred_entropy_mat[Cl_pred_matrix==10]
-      #  NN_mean_entropy = Entropy_mat_NN.mean()
-      #  NN_std_entropy = Entropy_mat_NN.std()
-      Cl_pred_matrix[Pred_entropy_mat>=Thresholding_entropy]=10
+  #   if Thresholding_entropy!=[]: #NOT USED
+  #     #  Entropy_mat_NN = Pred_entropy_mat[Cl_pred_matrix==10]
+  #     #  NN_mean_entropy = Entropy_mat_NN.mean()
+  #     #  NN_std_entropy = Entropy_mat_NN.std()
+  #     Cl_pred_matrix[Pred_entropy_mat>=Thresholding_entropy]=10
 
-      Lab_mat= labels.unsqueeze(1).expand(len(labels), input_data.size()[2])
+  #     Lab_mat= labels.unsqueeze(1).expand(len(labels), input_data.size()[2])
 
-      Cl_acc = Cl_pred_matrix==Lab_mat
-      Cl_acc = Cl_acc.to(torch.float)
-      acc =Cl_acc.mean(dim=0)
+  #     Cl_acc = Cl_pred_matrix==Lab_mat
+  #     Cl_acc = Cl_acc.to(torch.float)
+  #     acc =Cl_acc.mean(dim=0)
       
-      for digit in range(model.Num_classes):
-          digit_idxs = labels==digit
-          a = Cl_pred_matrix[digit_idxs,:]==Lab_mat[digit_idxs,:]
-          a = a.to(torch.float)
-          digitwise_acc[digit,:]=a.mean(dim=0)     
+  #     for digit in range(model.Num_classes):
+  #         digit_idxs = labels==digit
+  #         a = Cl_pred_matrix[digit_idxs,:]==Lab_mat[digit_idxs,:]
+  #         a = a.to(torch.float)
+  #         classwise_acc[digit,:]=a.mean(dim=0)     
 
 
   if plot == 1:
@@ -261,13 +267,13 @@ def Classifier_accuracy(input_dict, classifier,model, Thresholding_entropy=[], l
       if not(image_side==64):
         figure, axis = plt.subplots(2, 2, figsize=(20,15))
         Cl_plot(axis[0,0],x,acc,x_lab='Nr. of steps',y_lab='Classifier accuracy', lim_y = [0,1],Title = 'Classifier accuracy',l_sz=l_sz, dS= dS, color='g')
-        Cl_plot(axis[0,1],x,MEAN_entropy,y_err = SEM_entropy,x_lab='Nr. of steps',y_lab='Entropy', lim_y = [0,1],Title = 'Average entropy',l_sz=l_sz, dS= dS, color='r')
-        Cl_plot_digitwise(axis[1,0],cl_lbls,x,digitwise_acc,x_lab='Generation step',y_lab='Accuracy',Num_classes=model.Num_classes, lim_y = [0,1],l_sz=l_sz, dS= dS, cmap=cmap)
-        Cl_plot_digitwise(axis[1,1],cl_lbls,x,digitwise_avg_entropy,digitwise_y_err=digitwise_sem_entropy,x_lab='Generation step',y_lab='Entropy',Num_classes=model.Num_classes, lim_y = [0,1],Title = 'Entropy - digitwise',l_sz=l_sz, dS= dS, cmap=cmap)
+        #Cl_plot(axis[0,1],x,MEAN_entropy,y_err = SEM_entropy,x_lab='Nr. of steps',y_lab='Entropy', lim_y = [0,1],Title = 'Average entropy',l_sz=l_sz, dS= dS, color='r')
+        Cl_plot_classwise(axis[1,0],cl_lbls,x,classwise_acc,x_lab='Generation step',y_lab='Accuracy',Num_classes=model.Num_classes, lim_y = [0,1],l_sz=l_sz, dS= dS, cmap=cmap)
+        #Cl_plot_classwise(axis[1,1],cl_lbls,x,classwise_avg_entropy,classwise_y_err=classwise_sem_entropy,x_lab='Generation step',y_lab='Entropy',Num_classes=model.Num_classes, lim_y = [0,1],Title = 'Entropy - classwise',l_sz=l_sz, dS= dS, cmap=cmap)
       else:
         figure, axis = plt.subplots(2, figsize=(10,15))
         Cl_plot(axis[0],x,acc,x_lab='Nr. of steps',y_lab='Classifier accuracy', lim_y = [0,1],Title = 'Classifier accuracy',l_sz=l_sz, dS= dS, color='g')
-        Cl_plot_digitwise(axis[1],cl_lbls,x,digitwise_acc,x_lab='Generation step',y_lab='Accuracy',Num_classes=model.Num_classes, lim_y = [0,1],Title = 'Classifier accuracy - digitwise',l_sz=l_sz, dS= dS, cmap=cmap)
+        Cl_plot_classwise(axis[1],cl_lbls,x,classwise_acc,x_lab='Generation step',y_lab='Accuracy',Num_classes=model.Num_classes, lim_y = [0,1],Title = 'Classifier accuracy - classwise',l_sz=l_sz, dS= dS, cmap=cmap)
 
       plt.subplots_adjust(left=0.1, 
                         bottom=0.1,  
@@ -285,22 +291,25 @@ def Classifier_accuracy(input_dict, classifier,model, Thresholding_entropy=[], l
       figure, axis = plt.subplots(1, 1, figsize=(15,15))
       Cl_plot(axis,x,acc,x_lab='Nr. of steps',y_lab='Classifier accuracy', lim_y = [0,1],Title = 'Classifier accuracy',l_sz=l_sz, dS= dS, color='g')
       figure, axis = plt.subplots(1, 1, figsize=(15,15))
-      Cl_plot_digitwise(axis,cl_lbls,x,digitwise_acc,x_lab='Generation step',y_lab='Accuracy', Num_classes=model.Num_classes, lim_y = [0,1],Title = 'Classifier accuracy - digitwise',l_sz=l_sz, dS= dS, cmap=cmap)
-      if not(image_side==64):
-        figure, axis = plt.subplots(1, 1, figsize=(15,15))      
-        Cl_plot(axis,x,MEAN_entropy,y_err = SEM_entropy,x_lab='Nr. of steps',y_lab='Entropy', lim_y = [0,1],Title = 'Average entropy',l_sz=l_sz, dS= dS, color='r')
+      Cl_plot_classwise(axis,cl_lbls,x,classwise_acc,x_lab='Generation step',y_lab='Accuracy', Num_classes=model.Num_classes, lim_y = [0,1],Title = 'Classifier accuracy - classwise',l_sz=l_sz, dS= dS, cmap=cmap)
+      #NOT USED
+      # if not(image_side==64):
+      #   figure, axis = plt.subplots(1, 1, figsize=(15,15))      
+      #   Cl_plot(axis,x,MEAN_entropy,y_err = SEM_entropy,x_lab='Nr. of steps',y_lab='Entropy', lim_y = [0,1],Title = 'Average entropy',l_sz=l_sz, dS= dS, color='r')
 
-        figure, axis = plt.subplots(1, 1, figsize=(15,15))
-        Cl_plot_digitwise(axis,cl_lbls,x,digitwise_avg_entropy,digitwise_y_err=digitwise_sem_entropy,x_lab='Generation step',y_lab='Entropy', Num_classes=model.Num_classes, lim_y = [0,1],Title = 'Entropy - digitwise',l_sz=l_sz, dS= dS, cmap=cmap)
+      #   figure, axis = plt.subplots(1, 1, figsize=(15,15))
+      #   Cl_plot_classwise(axis,cl_lbls,x,classwise_avg_entropy,classwise_y_err=classwise_sem_entropy,x_lab='Generation step',y_lab='Entropy', Num_classes=model.Num_classes, lim_y = [0,1],Title = 'Entropy - classwise',l_sz=l_sz, dS= dS, cmap=cmap)
 
   #the output is the input dictionary ernriched with new keys
   input_dict['Cl_pred_matrix'] = Cl_pred_matrix
   input_dict['Cl_accuracy'] = acc
-  input_dict['digitwise_acc'] = digitwise_acc
-  if not(image_side==64):
-    input_dict['Pred_entropy_mat'] = Pred_entropy_mat
-    input_dict['MEAN_entropy'] = MEAN_entropy
-    input_dict['digitwise_entropy'] = digitwise_avg_entropy
+  input_dict['classwise_acc'] = classwise_acc
+  
+  #NOT USED
+  # if not(image_side==64):
+  #   input_dict['Pred_entropy_mat'] = Pred_entropy_mat
+  #   input_dict['MEAN_entropy'] = MEAN_entropy
+  #   input_dict['classwise_entropy'] = classwise_avg_entropy
 
   return input_dict
 
@@ -507,14 +516,14 @@ def Cl_plot(axis,x,y,y_err=[],x_lab='Generation step',y_lab='Accuracy', lim_y = 
   axis.set_xlabel(x_lab,fontsize=dS)
   axis.set_title(Title,fontsize=dS)
 
-def Cl_plot_digitwise(axis,cl_lbls,x,digitwise_y,digitwise_y_err=[], Num_classes=10,x_lab='Generation step',y_lab='Accuracy', lim_y = [0,1],Title = 'Classifier accuracy - digitwise',l_sz=3, dS= 30, cmap=cm.get_cmap('hsv')):
+def Cl_plot_classwise(axis,cl_lbls,x,classwise_y,classwise_y_err=[], Num_classes=10,x_lab='Generation step',y_lab='Accuracy', lim_y = [0,1],Title = 'Classifier accuracy - classwise',l_sz=3, dS= 30, cmap=cm.get_cmap('hsv')):
   c=0
   for digit in range(Num_classes):
     Color = cmap(c/256) 
-    MEAN = digitwise_y[digit,:].cpu()
+    MEAN = classwise_y[digit,:].cpu()
     axis.plot(x, MEAN, c = Color, linewidth=l_sz)
-    if digitwise_y_err!=[]:
-      SEM = digitwise_y_err[digit,:].cpu()
+    if classwise_y_err!=[]:
+      SEM = classwise_y_err[digit,:].cpu()
       axis.fill_between(x,MEAN-SEM, MEAN+SEM, color=Color,
               alpha=0.3)
     c = c+25

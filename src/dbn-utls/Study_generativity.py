@@ -803,7 +803,7 @@ def Perc_H_act(model, sample_labels, gen_data_dictionary=[], dS = 50, l_sz = 5, 
     axis.tick_params(axis='y', labelsize= dS)
     axis.set_ylabel(y_lbl,fontsize=dS)
     axis.set_xlabel('Generation step',fontsize=dS)
-    axis.set_title(y_lbl+' - digitwise',fontsize=dS)
+    axis.set_title(y_lbl+' - classwise',fontsize=dS)
 
 
     axis.set_ylim([0,100])
