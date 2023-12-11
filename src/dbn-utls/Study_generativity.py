@@ -1006,7 +1006,7 @@ def comparisons_plot(Results_dict, sel_key='Nr_visited_states_MEAN'):
   n = len(keys)
 
   # costruisci la stringa per il prompt di input
-  input_prompt = "Che chiavi vuoi selezionare?\n"
+  input_prompt = "Which keys do you want to select (indicate in [] as a list)?\n"
   for i in range(n):
       input_prompt += f"{i}: {keys[i]}\n"
 
