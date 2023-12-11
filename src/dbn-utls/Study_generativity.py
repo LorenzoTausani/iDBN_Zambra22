@@ -638,7 +638,7 @@ class Intersection_analysis_ZAMBRA:
       #b_vec = torch.unsqueeze(b_vec,0) #NOT USED
       d = generate_from_hidden_ZAMBRA(self.model, b_vec, nr_gen_steps=self.nr_steps) #generate from the hidden vectors produced
       
-      d = Classifier_accuracy(d, VGG_cl, self.model, plot=plot, Thresholding_entropy=entropy_correction) #compute the accuracy of the classifier over the generation period
+      d = Classifier_accuracy(d, VGG_cl, self.model, plot=0, Thresholding_entropy=entropy_correction) #compute the accuracy of the classifier over the generation period
       df_average,df_sem, Transition_matrix_rowNorm = classification_metrics(d,self.model, Plot=plot, Ian=1)
       
       # if nr_of_examples < 16:
