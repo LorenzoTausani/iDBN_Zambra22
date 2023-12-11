@@ -687,7 +687,7 @@ def readout_epoch0_1andHalfBatches(dbn,train_dataset_retraining_ds, test_dataset
     R_list.append(readout_acc_V_DIGITS[-1])
   return R_list
 
-def readout_comparison(dbn, classifier,MNIST_train_dataset,MNIST_test_dataset,mixing_type_options = ['[]','origMNIST', 'chimeras', 'chimeras'], retr_DS = 'EMNIST', H_type = ['det', 'det', 'det', 'det'], new_retrain_dataV = [False, False, False, False]):
+def readout_comparison(dbn, classifier,MNIST_train_dataset,MNIST_test_dataset,mixing_type_options = ['[]','origMNIST', 'chimeras'], retr_DS = 'EMNIST', H_type = ['det', 'det', 'det'], new_retrain_dataV = [False, False, False]):
     
   if not(isinstance(H_type, list)):
      H_type = [H_type]*len(mixing_type_options)
