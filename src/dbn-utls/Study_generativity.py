@@ -647,7 +647,7 @@ class Intersection_analysis_ZAMBRA:
       
       return d, df_average,df_sem, Transition_matrix_rowNorm
     
-def Chimeras_nr_visited_states_ZAMBRA(model, VGG_cl, Ian =[], topk=149, apprx=1,plot=1,compute_new=1, nr_sample_generated =100, entropy_correction=[],cl_labels=[], lS=20):
+def Chimeras_nr_visited_states_ZAMBRA(model, VGG_cl, Ian =[], topk=149, apprx=1,plot=1,compute_new=1, nr_sample_generated =100, entropy_correction=[],cl_labels=[], lS=25):
     def save_mat_xlsx(my_array, filename='my_res.xlsx'):
         # create a pandas dataframe from the numpy array
         my_dataframe = pd.DataFrame(my_array)
@@ -757,7 +757,7 @@ def Chimeras_nr_visited_states_ZAMBRA(model, VGG_cl, Ian =[], topk=149, apprx=1,
       plt.show()
 
     if n_digits==10:
-      print('final c_Tmat',c_Tmat)
+      #print('final c_Tmat',c_Tmat) #NOT USED
       return Vis_states_mat, Vis_states_err,Non_digit_mat,Non_digit_err #,Transition_matrix_tensor
     else:
       return Vis_states_mat, Vis_states_err
