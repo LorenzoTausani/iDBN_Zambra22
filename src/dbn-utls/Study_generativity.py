@@ -992,7 +992,7 @@ def comparisons_plot(Results_dict, sel_key='Nr_visited_states_MEAN'):
     x_labels = ['LB', 'C_2LB', 'C_int']
     x_lab = 'Generation method'
     y_lab = 'Number of states'
-    y_r = [1,5]
+    y_r = [1,4]
   else:
     # Create a list of the x-axis labels
     x_labels = ['V', 'H1', 'H2', 'H3']
