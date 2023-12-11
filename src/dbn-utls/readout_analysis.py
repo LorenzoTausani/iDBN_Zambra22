@@ -745,6 +745,6 @@ def readout_comparison(dbn, classifier,MNIST_train_dataset,MNIST_test_dataset,mi
   
 
   ix = [0,1,2,4,5,6,7,8,9,10,11,12,13]
-  plot_relearning(Readouts[ix,:], yl = [0.7, 1], legend_labels = columns)
+  plot_relearning(Readouts[ix,:], yl = [0.75, 1], legend_labels = [])
 
   return Readouts
