@@ -593,7 +593,7 @@ for lp in EMNIST_prototypes:
 
 '''
 
-def plot_relearning(Readouts, yl = [0.75, 1],lab_sz = 30, leg_on =1, legend_labels=[]):
+def plot_relearning(Readouts, yl = [0.75, 1],lab_sz = 30, leg_on =1, legend_labels=['Sequential learning', 'Interleaved learning - experience replay', 'Interleaved learning - generative replay']):
 
   # Assuming your matrix is named 'my_matrix'
   # Generate x-axis ticks from 0 to 100 with steps of 5
