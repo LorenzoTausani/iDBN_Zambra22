@@ -415,7 +415,7 @@ def classifier_loader(dbn,train_dataset_original, test_dataset_original, selecte
    if dbn.dataset_id == 'MNIST':
       #I create an instance of the classifier in which I will later load the saved parameters.
       classifier = VGG16((1,32,32), batch_norm=True).to(DEVICE) 
-      PATH = '/content/gdrive/My Drive/VGG16_MNIST/VGG16_MNIST_best_val.pth'
+      PATH = '/content/gdrive/My Drive/ZAMBRA_DBN/VGG16_MNIST/VGG16_MNIST_best_val.pth'
       classifier.load_state_dict(torch.load(PATH))
    else: #CelebA
       Load_classifier = int(input('do you want to load a classifier or train it from scratch? (1=load, 0=train)'))
