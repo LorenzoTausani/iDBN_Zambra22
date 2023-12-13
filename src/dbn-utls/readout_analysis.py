@@ -612,12 +612,12 @@ def plot_relearning(Readouts, yl = [0.75, 1],lab_sz = 50, leg_on =1, legend_labe
 
   # Plot each column of the first subset with red color and different line styles
   for i, column in enumerate(subset1.T):
-      line_style = ['-', '--', ':', '-.'][i % nCols]  # Cycle through line styles
+      line_style = ['-', '--', ':'][i % nCols]  # Cycle through line styles
       ax.plot(x_ticks, column, color='red', linestyle=line_style, lw=4)
 
   # Plot each column of the second subset with blue color and different line styles
   for i, column in enumerate(subset2.T):
-      line_style = ['-', '--', ':', '-.'][i % nCols]  # Cycle through line styles
+      line_style = ['-', '--', ':'][i % nCols]  # Cycle through line styles
       ax.plot(x_ticks, column, color='blue', linestyle=line_style, lw=4)
 
   #x_ticks_l = ['1b', 'N/2b', '1']+[str(i) for i in range(5, 51, 5)]
@@ -632,8 +632,8 @@ def plot_relearning(Readouts, yl = [0.75, 1],lab_sz = 50, leg_on =1, legend_labe
 
   # Create the legend
   if legend_labels == []:
-    legend_labels = ['Sequential learning', 'Interleaved learning - experience replay', 'Interleaved learning - Label biasing', 'Interleaved learning - generative replay']
-  legend_handles = [plt.Line2D([], [], color='black', linestyle=style) for style in ['-', '--', ':', '-.']]
+    legend_labels = ['Sequential learning', 'Interleaved learning - experience replay',  'Interleaved learning - generative replay']
+  legend_handles = [plt.Line2D([], [], color='black', linestyle=style) for style in ['-', '--', ':']]
   if leg_on ==1:
     ax.legend(legend_handles, legend_labels, loc='upper center', bbox_to_anchor=(0.5, -0.15), fontsize=lab_sz, ncol=len(legend_labels)//2)
 
