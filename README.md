@@ -1,7 +1,7 @@
 # Investigating the intrinsic top-down dynamics of deep generative models
 
 ### User guide
-The code reports the main experiments of Tausani et al., 2023. The code is thought to be used with Google Colab using Google Drive (you can find an example [here](https://drive.google.com/drive/folders/1_6f8UFZx2LGFVHqW3wLaBREnlGk069Kc?usp=drive_link)) for storage.
+The code reports the main experiments of Tausani et al., 2023. The code is thought to be used with Google Colab (check [here](DBN_generation.ipynb) for example experiments) using Google Drive (you can find an example [here](https://drive.google.com/drive/folders/1_6f8UFZx2LGFVHqW3wLaBREnlGk069Kc?usp=drive_link)) for storage.
 
 The code needs three `json` configuration files. `cparams.json`,`lparams-DatasetName.json` (e.g. `lparams-mnist.json`)
 * `cparams.json` contains configuration parameters: the dataset, the number of layers and others (fixed) parameters
