@@ -20,13 +20,11 @@ from itertools import combinations
 from skimage.filters import threshold_sauvola
 from pathlib import Path
 from copy import deepcopy
+from misc import reshape_data, MyDataset
 
 def data_and_labels(data_train, BATCH_SIZE,NUM_FEAT,DATASET_ID,n_cols_labels):
   #This function prepares the data for processing by machine learning models (NOTE FOR THE WRITER: Be more specific)
-  if torch.cuda.is_available():
-     d = 'cuda'
-  else:
-     d = 'cpu'
+  d = 'cuda' if torch.cuda.is_available() else 'cpu' #if cuda is available, then d = 'cuda', otherwise d = 'cpu'
   train_loader = DataLoader(data_train, batch_size=BATCH_SIZE, shuffle=False, generator=torch.Generator(device=d)) #create a dataloader with the data shuffled
   #shuffle=False impedisce al DataLoader di mescolare casualmente i dati durante l'addestramento, consentendo di iterare attraverso i dati nell'ordine originale in cui sono stati forniti.
   #Questo è stato fatto perchè alternativamente da un Type error che non sono riuscito a risolvere
@@ -59,60 +57,48 @@ def data_and_labels(data_train, BATCH_SIZE,NUM_FEAT,DATASET_ID,n_cols_labels):
   return train_data, train_labels  
 
 
-def load_data_ZAMBRA(CPARAMS,LPARAMS,Zambra_folder_drive):
+def load_data_ZAMBRA(ds_id,batch_sz,Zambra_folder_drive):
     #This function summarizes the loading data into the Zambra repository, avoiding issues and errors.
-    DATASET_ID = CPARAMS['DATASET_ID']
     n_cols_labels = 1 # Initialize the number of label columns (e.g. 1 for MNIST)
     # Determine the number of features based on DATASET_ID
-    if DATASET_ID =='MNIST' or DATASET_ID =='EMNIST':
-       NUM_FEAT= np.int32(28*28)
-    elif DATASET_ID =='CIFAR10':
+    if ds_id =='MNIST' or ds_id =='EMNIST':
+      NUM_FEAT= np.int32(28*28)
+    elif ds_id =='CIFAR10':
       NUM_FEAT= np.int32(32*32)
-    elif 'CelebA' in DATASET_ID:
-       NUM_FEAT= np.int32(64*64)
-       n_cols_labels = 40
+    elif 'CelebA' in ds_id:
+      NUM_FEAT= np.int32(64*64)
+      n_cols_labels = 40
 
-    BATCH_SIZE = LPARAMS['BATCH_SIZE']
     # Create names for test and training data files
-    test_filename = 'test_dataset_'+DATASET_ID+'.npz'
-    train_filename = 'train_dataset_'+DATASET_ID+'.npz'
-    trainfile_path= os.path.join(Zambra_folder_drive,'dataset_dicts',train_filename)
-    testfile_path = os.path.join(Zambra_folder_drive,'dataset_dicts',test_filename)
+    train_path= os.path.join(Zambra_folder_drive,'dataset_dicts',f'train_dataset_{ds_id}.npz')
+    test_path = os.path.join(Zambra_folder_drive,'dataset_dicts',f'test_dataset_{ds_id}.npz')
 
     # If the training file exists, load the data (both train and test)
-    if os.path.exists(trainfile_path):
-      train_dataset = dict(np.load(trainfile_path))
-      test_dataset = dict(np.load(testfile_path))
+    if os.path.exists(train_path):
+      train_dataset = dict(np.load(train_path))
+      test_dataset = dict(np.load(test_path))
       # Convert the numpy arrays to torch tensors
       for key in train_dataset:
           train_dataset[key] = torch.from_numpy(train_dataset[key])
           test_dataset[key]= torch.from_numpy(test_dataset[key])
 
-      Real_BATCH_SIZE = train_dataset['data'].shape[1] # Calculate the actual BATCH_SIZE of the training data
-      if not(Real_BATCH_SIZE ==BATCH_SIZE): #if there is a mismatch between the actual batch size and the desired batch size (i.e. BATCH_SIZE)...
+      batch_sz_real = train_dataset['data'].shape[1] # Calculate the actual BATCH_SIZE of the training data
+      if not(batch_sz_real ==batch_sz): #if there is a mismatch between the actual batch size and the desired batch size (i.e. BATCH_SIZE)...
         #...then ask the user if he wants to reshape the data to the desired batch size
-        reshape_yn = int(input('data found with batchsize '+str(Real_BATCH_SIZE)+ '.Reshape it to the desired batchsize '+str(BATCH_SIZE)+'? (1=y,0=n)'))
+        reshape_yn = int(input('data found with batchsize '+str(batch_sz_real)+ 
+                    '.Reshape it to the desired batchsize '+str(batch_sz)+'? (1=y,0=n)'))
         if reshape_yn==1: # if the user asks for reshape...
-          def reshape_data(train_dataset, Real_BATCH_SIZE, BATCH_SIZE):
-              n = BATCH_SIZE//Real_BATCH_SIZE # Designed for 128 and 64 only
-              if not(train_dataset['data'].shape[0]%n==0): #if the nr of rows of train_dataset['data'] is not divisible by n...
-                  #remove a row from the data and label arrays
-                  train_dataset['data'] = train_dataset['data'][:-1,:,:]
-                  train_dataset['labels'] = train_dataset['labels'][:-1,:,:]
-              #reshape both the data and labels array so that the batch size is now the desired one (i.e. BATCH_SIZE)
-              train_dataset['data'] = train_dataset['data'].view(train_dataset['data'].shape[0]//n, BATCH_SIZE, train_dataset['data'].shape[2])
-              train_dataset['labels'] = train_dataset['labels'].view(train_dataset['labels'].shape[0]//n, BATCH_SIZE, train_dataset['labels'].shape[2])
-              return train_dataset
           #...reshape both the train and test dataset
-          train_dataset = reshape_data(train_dataset, Real_BATCH_SIZE, BATCH_SIZE)
-          test_dataset = reshape_data(test_dataset, Real_BATCH_SIZE, BATCH_SIZE)
-    else: # If the training file does not exist, load the data from scratch based on DATASET_ID
-      if DATASET_ID =='MNIST':
+          train_dataset = reshape_data(train_dataset, batch_sz_real, batch_sz)
+          test_dataset = reshape_data(test_dataset, batch_sz_real, batch_sz)
+    # If the training file does not exist, load the data from scratch based on DATASET_ID
+    else: 
+      if ds_id =='MNIST':
         transform =transforms.Compose([transforms.ToTensor()])
         data_train = datasets.MNIST('../data', train=True, download=True, transform=transform)
         data_test = datasets.MNIST('../data', train=False, download=True, transform=transform)
       
-      elif DATASET_ID =='EMNIST':
+      elif ds_id =='EMNIST':
         transform =transforms.Compose([transforms.ToTensor()])
         data_train = datasets.EMNIST('../data', train=True,split = 'byclass', download=True, transform=transform)
         data_test = datasets.EMNIST('../data', train=False,split = 'byclass', download=True, transform=transform)
@@ -128,71 +114,49 @@ def load_data_ZAMBRA(CPARAMS,LPARAMS,Zambra_folder_drive):
         data_train = [decrease_labels_by_10(item) for item in data_train]
         data_test = [decrease_labels_by_10(item) for item in data_test]
 
-      elif DATASET_ID=='CIFAR10':
+      elif ds_id=='CIFAR10':
         transform = transforms.Compose([
             transforms.Grayscale(),
             transforms.ToTensor()])
         data_train = datasets.CIFAR10(root='../data', split='train', download=True, transform=transform)
         data_test = datasets.CIFAR10(root='../data', split='test', download=True, transform=transform)   
         
-      elif 'CelebA' in DATASET_ID:
+      elif 'CelebA' in ds_id:
         transform=transforms.Compose([
             transforms.Resize((64, 64)),
             transforms.Grayscale(),
             transforms.ToTensor()])
         data_train = datasets.CelebA(root='../data', split='train', download=True, transform=transform)
         data_test = datasets.CelebA(root='../data', split='test', download=True, transform=transform)      
-      train_data, train_labels = data_and_labels(data_train, BATCH_SIZE,NUM_FEAT,DATASET_ID,n_cols_labels)
-      test_data, test_labels = data_and_labels(data_test, BATCH_SIZE,NUM_FEAT,DATASET_ID,n_cols_labels)
+      train_data, train_labels = data_and_labels(data_train, batch_sz,NUM_FEAT,ds_id,n_cols_labels)
+      test_data, test_labels = data_and_labels(data_test, batch_sz,NUM_FEAT,ds_id,n_cols_labels)
 
       train_dataset = {'data': train_data, 'labels': train_labels}
       test_dataset = {'data': test_data, 'labels': test_labels}
       Path(os.path.join(Zambra_folder_drive,'dataset_dicts')).mkdir(exist_ok=True)  #If the directory already exists, it does nothing (thanks to "exist_ok=True")
       #This is a common way to save multiple arrays or data structures into a single archive file for easy storage and later retrieval.
       #'**' unpacks the dictionary and passes its contents to the function.
-      np.savez(trainfile_path, **train_dataset)
-      np.savez(testfile_path, **test_dataset)
+      np.savez(train_path, **train_dataset)
+      np.savez(test_path, **test_dataset)
 
     return train_dataset, test_dataset
 
-class MyDataset(Dataset):
-    def __init__(self, features, labels, transform=None):
-        # Initialize the dataset with features, labels, and an optional transform function
-        self.features = features
-        self.labels = labels
-        self.transform = transform
 
-    def __len__(self):
-        # Define the behavior when len() is called on an instance of MyDataset
-        return len(self.features)
-
-    def __getitem__(self, idx):
-        # Define the behavior when an item is accessed using indexing
-        feature = self.features[idx]
-        label = self.labels[idx]
-
-        # apply transformations if specified
-        if self.transform:
-            feature = self.transform(feature)
-
-        return feature, label
-
-def Multiclass_dataset(train_dataset, selected_idx = [20,31], for_classifier = False, Old_rbm=False, DEVICE ='cuda'):
-  Batch_size = train_dataset['data'].shape[1]
-  Train_data = copy.deepcopy(train_dataset['data']).to(DEVICE) # Deep copy and move training data to the specified device (e.g., 'cuda')
-  if not(selected_idx==[]): # If selected indices are provided, deep copy and move the corresponding labels to the device
-    Train_labels = copy.deepcopy(train_dataset['labels'][:,:,selected_idx]).to(DEVICE)
-  else:
-    Train_labels = copy.deepcopy(train_dataset['labels']).to(DEVICE)
-  side_img = int(np.sqrt(Train_data.shape[2])) # Calculate the side length of the image (NOTE: the images are squares, and are originally stored as vectors)
+def Multiclass_dataset(train_ds, selected_idx = [20,31], for_classifier = False, Old_rbm=False, DEVICE ='cuda'):
+  batch_sz = train_ds['data'].shape[1]
+  #Deep copy and move training data to the specified device (e.g., 'cuda')
+  Train_data = deepcopy(train_ds['data']).to(DEVICE) 
+  # If selected indices are provided, deep copy and move the corresponding labels to the device
+  Train_lbls = deepcopy(train_ds['labels'][:,:,selected_idx]).to(DEVICE) if not(selected_idx==[]) else deepcopy(train_ds['labels']).to(DEVICE)
+  #Calculate the side length of the image (NOTE: the images are squares, and are originally stored as vectors)
+  side_img = int(np.sqrt(Train_data.shape[2])) 
   Train_data = Train_data.view(Train_data.shape[0]*Train_data.shape[1], side_img, side_img).unsqueeze(1) #here i am storing the data without batching them, and as images (i.e. matrices instead of vectors)
-  Train_labels = Train_labels.view(Train_labels.shape[0]*Train_labels.shape[1], Train_labels.shape[2]) # i store also the labels without batching
-
+  Train_lbls = Train_lbls.view(Train_lbls.shape[0]*Train_lbls.shape[1], Train_lbls.shape[2]) # i store also the labels without batching
 
   if not(selected_idx==[]): # If selected indices are provided
     #Here i transform multilabels (e.g. blonde and with sunglasses) into one-hot encoded labels, like in the MNIST. This part of the code is used for CelebA labels in particular
     powers_of_10 = torch.pow(10, torch.arange(len(selected_idx), dtype=torch.float)).to(DEVICE) # this generates a tensor of powers of 10, where each element corresponds to a different power of 10
-    Cat_labels = torch.matmul(Train_labels,powers_of_10) #for each multilabel (e.g. 1 0 1 1) i compute the matmul with powers_of_10, so to obtain a single number (e.g. 1101)
+    Cat_labels = torch.matmul(Train_lbls,powers_of_10) #for each multilabel (e.g. 1 0 1 1) i compute the matmul with powers_of_10, so to obtain a single number (e.g. 1101)
     # now in Cat_labels each each element is labelled with a single category, like in MNIST
     cats, f_cat = torch.unique(Cat_labels, return_counts= True) #i compute the frequency of each of the categories in Cat_labels
     lowest_freq_idx = torch.argmin(f_cat)#i find the index of the lower frequency category...
@@ -217,14 +181,14 @@ def Multiclass_dataset(train_dataset, selected_idx = [20,31], for_classifier = F
     #Here below i will re-label the Cat_labels with more manageable names (i.e. progressives from 0 to nr categories -1, as happens for MNIST)
     proxy_cat = 2 #i begin from 2, given that labels 0 and 1 already exist in the old labelling system
     for category in cats:
-       if category>=10: #i will change the name to all categories that are not 0 and 1
-          new_Cat_labels = torch.where(new_Cat_labels == category, proxy_cat, new_Cat_labels) #this updates new_Cat_labels by replacing certain category labels (category) with a different value (proxy_cat) based on the specified condition (new_Cat_labels == category)
-          proxy_cat = proxy_cat + 1
+      if category>=10: #i will change the name to all categories that are not 0 and 1
+        new_Cat_labels = torch.where(new_Cat_labels == category, proxy_cat, new_Cat_labels) #this updates new_Cat_labels by replacing certain category labels (category) with a different value (proxy_cat) based on the specified condition (new_Cat_labels == category)
+        proxy_cat = proxy_cat + 1
 
     new_Train_data = torch.index_select(Train_data, 0, Idxs_to_keep) #i select just the training examples corresponding to Idxs_to_keep
   else:
     new_Train_data = Train_data
-    new_Cat_labels = Train_labels
+    new_Cat_labels = Train_lbls
 
   if for_classifier: # if you need your data (CelebA) to be preprocessed to be inputted to a classifier
     #then i apply the following transformation to make the data suitable to ResNet
@@ -235,20 +199,21 @@ def Multiclass_dataset(train_dataset, selected_idx = [20,31], for_classifier = F
         transforms.ToTensor(),
     ])
     dataset = MyDataset(features = new_Train_data, labels= new_Cat_labels, transform=transform)
-    #dataset = MyDataset(Train_labels, Train_data)
+    #dataset = MyDataset(Train_lbls, Train_data)
     train_loader = DataLoader(dataset, batch_size=64, shuffle=False)
     return train_loader #i return the loader ready to be used for classifier training or testing
+  
   elif Old_rbm==False: 
     #This should be the classic preprocessing for the current code DBN
     new_Train_data = torch.squeeze(new_Train_data,1)
     new_Train_data = new_Train_data.view(new_Train_data.shape[0],new_Train_data.shape[1]*new_Train_data.shape[2])
-    num_batches = new_Train_data.__len__() // Batch_size
-    new_Train_data = new_Train_data[:(num_batches*Batch_size),:]
-    new_Train_data = new_Train_data.view(num_batches,Batch_size,new_Train_data.shape[1])
-    new_Cat_labels = new_Cat_labels[:(num_batches*Batch_size)]
-    new_Cat_labels = new_Cat_labels.view(num_batches,Batch_size,1)
-    train_dataset = {'data': new_Train_data, 'labels': new_Cat_labels}
-    return train_dataset
+    num_batches = new_Train_data.__len__() // batch_sz
+    new_Train_data = new_Train_data[:(num_batches*batch_sz),:]
+    new_Train_data = new_Train_data.view(num_batches,batch_sz,new_Train_data.shape[1])
+    new_Cat_labels = new_Cat_labels[:(num_batches*batch_sz)]
+    new_Cat_labels = new_Cat_labels.view(num_batches,batch_sz,1)
+    train_ds = {'data': new_Train_data, 'labels': new_Cat_labels}
+    return train_ds
   else: #if you are processing the data to be used by the old monolayer RBM (i.e. the one used in BI23), then...
     new_Train_data = new_Train_data.squeeze(1)
     new_Cat_labels = new_Cat_labels
@@ -263,31 +228,22 @@ def tool_loader_ZAMBRA(DEVICE,  selected_idx = [], only_data = True,classifier_y
 
   #load the various files necessary
   with open(os.path.join(Zambra_folder_drive, 'cparams.json'), 'r') as filestream:
-    CPARAMS = json.load(filestream)
+    CPAR = json.load(filestream)
   filestream.close()
   #and extract the relevant parameters
-  DATASET_ID = CPARAMS['DATASET_ID']
-  ALG_NAME = CPARAMS['ALG_NAME']
-
-  READOUT        = CPARAMS['READOUT']
-  RUNS           = CPARAMS['RUNS']
-  LAYERS         = CPARAMS['LAYERS']
-  NUM_DISCR      = CPARAMS['NUM_DISCR']
-  INIT_SCHEME    = CPARAMS['INIT_SCHEME']
+  DATASET_ID = CPAR['DATASET_ID']
 
   with open(os.path.join(Zambra_folder_drive, f'lparams-{DATASET_ID.lower()}.json'), 'r') as filestream:
-    LPARAMS = json.load(filestream)
+    LPAR = json.load(filestream)
   filestream.close()
-  
-  EPOCHS         = LPARAMS['EPOCHS']
-  
-  train_dataset_original, test_dataset_original = load_data_ZAMBRA(CPARAMS,LPARAMS,Zambra_folder_drive) #load the dataset of interest
-  BATCH_SIZE = train_dataset_original['data'].shape[1]
-  print('BATCH_SIZE '+ str(BATCH_SIZE))
+    
+  train_dataset_original, test_dataset_original = load_data_ZAMBRA(CPAR,LPAR,Zambra_folder_drive) #load the dataset of interest
+  batch_sz = train_dataset_original['data'].shape[1]
+  print('BATCH_SIZE '+ str(batch_sz))
   if 'CelebA' in DATASET_ID:
     if selected_idx == []:
         nrEx = train_dataset_original['labels'].shape[0] #usare
-        train_dataset = copy.deepcopy(train_dataset_original)
+        train_dataset = deepcopy(train_dataset_original)
         train_dataset['data'] = train_dataset['data'][:nrEx//2,:,:]  #for issues of processing on Colab, i will train using only half of the CelebA training data
         '''
         #Selection of a single label (UNUSED)
@@ -297,7 +253,7 @@ def tool_loader_ZAMBRA(DEVICE,  selected_idx = [], only_data = True,classifier_y
         test_dataset['labels'] = test_dataset['labels'][:,:,cat_id]
         '''
         train_dataset['labels'] = train_dataset['labels'][:nrEx//2,:,:]  # i downsample also the labels
-        test_dataset = copy.deepcopy(test_dataset_original)
+        test_dataset = deepcopy(test_dataset_original)
     else: 
         #i preprocess the data considering only the selected idxs
         train_dataset = Multiclass_dataset(train_dataset_original, selected_idx= selected_idx)
@@ -327,33 +283,30 @@ def tool_loader_ZAMBRA(DEVICE,  selected_idx = [], only_data = True,classifier_y
 
     # -----------------------------------------------------
     # Initialize performance metrics data structures
-    loss_metrics = np.zeros((RUNS, EPOCHS, LAYERS))
-    acc_metrics  = np.zeros((RUNS, EPOCHS, LAYERS))
-    test_repr    = np.zeros((RUNS))
-    test_reco    = np.zeros((RUNS))
-    test_deno    = np.zeros((RUNS))
+    loss_metrics = np.zeros((CPAR['RUNS'], LPAR['EPOCHS'], CPAR['LAYERS']))
+    acc_metrics  = np.zeros((CPAR['RUNS'], LPAR['EPOCHS'], CPAR['LAYERS']))
+    test_repr    = np.zeros((CPAR['RUNS']))
+    test_reco    = np.zeros((CPAR['RUNS']))
+    test_deno    = np.zeros((CPAR['RUNS']))
     Weber_fracs  = list()
     psycurves    = list()
 
     PATH_MODEL = os.getcwd()
 
     # Train the DBN
-    for run in range(RUNS):
+    for run in range(CPAR['RUNS']):
         
         print(f'\n\n---Run {run}\n')
         
-        if ALG_NAME == 'g':
-            
-            dbn = gDBN(ALG_NAME, DATASET_ID, INIT_SCHEME, PATH_MODEL, EPOCHS).to(DEVICE)
-            dbn.train(Xtrain, Xtest, Ytrain, Ytest, LPARAMS, readout = READOUT)
-        elif ALG_NAME == 'i':
-            
-            dbn = iDBN(ALG_NAME, DATASET_ID, INIT_SCHEME, PATH_MODEL, EPOCHS, last_layer_sz =1000).to(DEVICE)
-            dbn.train(Xtrain, Xtest, Ytrain, Ytest, LPARAMS, readout = READOUT, num_discr = NUM_DISCR)
-        elif ALG_NAME == 'fs':
-            
-            dbn = fsDBN(ALG_NAME, DATASET_ID, INIT_SCHEME, PATH_MODEL, EPOCHS).to(DEVICE)
-            dbn.train(Xtrain, Xtest, Ytrain, Ytest, LPARAMS)
+        if CPAR['ALG_NAME'] == 'g':
+            dbn = gDBN(CPAR['ALG_NAME'], DATASET_ID, CPAR['INIT_SCHEME'], PATH_MODEL, LPAR['EPOCHS']).to(DEVICE)
+            dbn.train(Xtrain, Xtest, Ytrain, Ytest, LPAR, readout = CPAR['READOUT'])
+        elif CPAR['ALG_NAME'] == 'i':
+            dbn = iDBN(CPAR['ALG_NAME'], DATASET_ID, CPAR['INIT_SCHEME'], PATH_MODEL, LPAR['EPOCHS'], last_layer_sz =1000).to(DEVICE)
+            dbn.train(Xtrain, Xtest, Ytrain, Ytest, LPAR, readout = CPAR['READOUT'], num_discr = CPAR['NUM_DISCR'])
+        elif CPAR['ALG_NAME'] == 'fs':
+            dbn = fsDBN(CPAR['ALG_NAME'], DATASET_ID, CPAR['INIT_SCHEME'], PATH_MODEL, LPAR['EPOCHS']).to(DEVICE)
+            dbn.train(Xtrain, Xtest, Ytrain, Ytest, LPAR)
         #end
         
         for layer_id, rbm in enumerate(dbn.rbm_layers):
@@ -361,7 +314,7 @@ def tool_loader_ZAMBRA(DEVICE,  selected_idx = [], only_data = True,classifier_y
             acc_metrics[run, :, layer_id] = rbm.acc_profile
         #end
         
-        if NUM_DISCR:
+        if CPAR['NUM_DISCR']:
             Weber_fracs.append(dbn.Weber_fracs) # list of pd.DataFrame
             psycurves.append(dbn.psycurves)     # list of dicts with ratios and percs
         #end
@@ -383,7 +336,7 @@ def tool_loader_ZAMBRA(DEVICE,  selected_idx = [], only_data = True,classifier_y
         else: #when you consider the multilabel case... (NOT USED)
           dbn.Num_classes = 40
           compute_inverseW_for_lblBiasing_ZAMBRA(dbn,train_dataset, L = train_dataset['labels'])
-        fname = name +'_'+str(dbn.Num_classes)+'classes_nEp'+str(EPOCHS)+'_nL'+str(len(dbn.rbm_layers))+'_lastL'+str(dbn.top_layer_size)+'_bsz'+str(BATCH_SIZE)
+        fname = f'{name}_{dbn.Num_classes}classes_nEp{LPAR['EPOCHS']}_nL{len(dbn.rbm_layers)}_lastL{dbn.top_layer_size}_bsz{batch_sz}'
         dbn.fname = fname
         #i save the trained DBN
         torch.save(dbn.to(torch.device('cpu')),
@@ -400,7 +353,7 @@ def tool_loader_ZAMBRA(DEVICE,  selected_idx = [], only_data = True,classifier_y
       last_layer_sz = input('dimensione dell ultimo layer?') #usually 1000 o 5250
     else:
       Num_classes = 40
-    fname = 'dbn_iterative_normal_'+DATASET_ID+'_'+str(Num_classes)+'classes_nEp'+str(EPOCHS)+'_nL'+str(nL)+'_lastL'+last_layer_sz+'_bsz'+str(BATCH_SIZE)
+    fname = f'dbn_iterative_normal_{DATASET_ID}_{Num_classes}classes_nEp{LPAR['EPOCHS']}_nL{nL}_lastL{last_layer_sz}_bsz{batch_sz}'
     dbn = torch.load(os.path.join(Zambra_folder_drive, fname+'.pkl'))
     if not(hasattr(dbn, 'fname')):
        dbn.fname = fname
