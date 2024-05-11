@@ -327,7 +327,7 @@ def tool_loader_ZAMBRA(DEVICE,  selected_idx = [], only_data = True,classifier_y
             else: #when you consider the multilabel case... (NOT USED)
                 dbn.Num_classes = 40
                 dbn.invW4LB(train_dataset, L = train_dataset['labels'])
-            fname = f'{name}_{dbn.Num_classes}classes_nEp{LPAR['EPOCHS']}_nL{len(dbn.rbm_layers)}_lastL{dbn.top_layer_size}_bsz{batch_sz}'
+            fname = f"{name}_{dbn.Num_classes}classes_nEp{LPAR['EPOCHS']}_nL{len(dbn.rbm_layers)}_lastL{dbn.top_layer_size}_bsz{batch_sz}"
             dbn.fname = fname
             #i save the trained DBN
             torch.save(dbn.to(torch.device('cpu')),
@@ -343,7 +343,7 @@ def tool_loader_ZAMBRA(DEVICE,  selected_idx = [], only_data = True,classifier_y
             last_layer_sz = input('dimensione dell ultimo layer?') #usually 1000 o 5250
         else:
             Num_classes = 40
-        fname = f'dbn_iterative_normal_{DATASET_ID}_{Num_classes}classes_nEp{LPAR['EPOCHS']}_nL{nL}_lastL{last_layer_sz}_bsz{batch_sz}'
+        fname = f"dbn_iterative_normal_{DATASET_ID}_{Num_classes}classes_nEp{LPAR['EPOCHS']}_nL{nL}_lastL{last_layer_sz}_bsz{batch_sz}"
         dbn = torch.load(path.join(Zambra_folder_drive, fname+'.pkl'))
         if not(hasattr(dbn, 'fname')):
             dbn.fname = fname
