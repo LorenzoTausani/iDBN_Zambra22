@@ -1,4 +1,17 @@
+import pandas as pd
+from google.colab import files
 from torch.utils.data import Dataset
+
+def save_mat_xlsx(my_array, filename='my_res.xlsx'):
+    # create a pandas dataframe from the numpy array
+    my_dataframe = pd.DataFrame(my_array)
+    # save the dataframe as an excel file
+    my_dataframe.to_excel(filename, index=False)
+    # download the file
+    files.download(filename)
+
+
+
 def reshape_data(train_ds, batch_sz_real, batch_sz):
     n = batch_sz//batch_sz_real # Designed for 128 and 64 only
     #if the nr of rows of train_ds['data'] is not divisible by n...

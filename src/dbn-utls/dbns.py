@@ -22,7 +22,7 @@ class NonLinear(torch.nn.Linear):
 
 class DBN(torch.nn.Module):
     
-    def __init__(self, alg_name, dataset_id, init_scheme, path_model, epochs, last_layer_sz =1000):
+    def __init__(self, alg_name, dataset_id, init_scheme, path_model, epochs, DEVICE = 'cuda', last_layer_sz =1000):
         super(DBN, self).__init__()
         
         if dataset_id == 'MNIST' or dataset_id == 'EMNIST':
@@ -91,6 +91,8 @@ class DBN(torch.nn.Module):
                 ]
             #end            
         
+        self.DEVICE = DEVICE
+        self.to(DEVICE)
         self.alg_name = alg_name
         self.init_scheme = init_scheme
         self.dataset_id = dataset_id
@@ -163,11 +165,126 @@ class DBN(torch.nn.Module):
     #end
 #end
 
+    def invW4LB(self,train_dataset, L=[]):
+        lbls = train_dataset['labels'].view(-1) # Flatten the labels in the training dataset
+        # Get the number of batches and batch size from the training dataset
+        nr_batches, BATCH_SIZE = train_dataset['data'].shape
+
+        # If L is not provided, create a one-hot encoding matrix L for each label (i.e. num classes x examples)
+        if L==[]:
+            L = torch.zeros(self.Num_classes,lbls.shape[0], device = self.DEVICE)
+            c=0
+            for lbl in lbls:
+                L[int(lbl),c]=1 #put =1 only the idx corresponding to the label of that example
+                c=c+1
+        else:
+            L = L.view(40, -1) #for CelebA with all 40 labels (UNUSED)
+
+        p_v, v = self(train_dataset['data'].cuda(), only_forward = True) #one step hidden layer of the training data by the model
+        V_lin = v.view(nr_batches*BATCH_SIZE, self.top_layer_size)
+        #I compute the inverse of the weight matrix of the linear classifier. weights_inv has shape (model.Num_classes x Hidden layer size (10 x 1000))
+        weights_inv = torch.transpose(torch.matmul(torch.transpose(V_lin,0,1), torch.linalg.pinv(L)), 0, 1)
+        self.weights_inv = weights_inv
+
+        return weights_inv
+    
+    def label_biasing(self, on_digits: int =1, topk: int = 149):
+        # aim of this function is to implement the label biasing procedure described in
+        # https://www.frontiersin.org/articles/10.3389/fpsyg.2013.00515/full
+        # Now i set the label vector from which i will obtain the hidden layer of interest 
+        Biasing_vec = torch.zeros (self.Num_classes,1, device = self.DEVICE)
+        Biasing_vec[on_digits] = 1
+        #I compute the biased hidden vector as the matmul of the trasposed weights_inv and the biasing vec. gen_hidden will have size (Hidden layer size x 1)
+        gen_hidden= torch.matmul(torch.transpose(self.weights_inv,0,1), Biasing_vec)
+
+        if topk>-1: #ATTENZIONE: label biasing con più di una label attiva (e.g. on_digits=[4,6]) funziona UNICAMENTE con topk>-1 (i.e. attivando le top k unità piu attive e silenziando le altre)
+            #In caso contrario da errore CUDA non meglio specificato
+            H = torch.zeros_like(gen_hidden, device = self.DEVICE) #crate an empty array of the same shape of gen_hidden 
+            for c in range(gen_hidden.shape[1]): # for each example in gen_hidden...
+                top_indices = torch.topk(gen_hidden[:,c], k=topk).indices # compute the most active indexes
+                H[top_indices,c] = 1 #set the most active indexes to 0
+            gen_hidden = H # gen_hidden is now binary (1 or 0)
+
+        return gen_hidden
+    
+def generate_from_hidden(self, input_hid_prob, nr_gen_steps: int=1):
+    #input_hid_prob has size Nr_hidden_units x num_cases. Therefore i transpose it
+    input_hid_prob = torch.transpose(input_hid_prob,0,1)
+
+    numcases = input_hid_prob.size()[0] #numbers of samples to generate
+    hidden_layer_size = input_hid_prob.size()[1]
+    vis_layerSize = self.rbm_layers[0].Nin
+    # Initialize tensors to store hidden and visible probabilities and states
+    # hid prob/states : nr layers x numbers of samples to generate x size of the hidden layer x number of generation steps
+    # vis prob/states : numbers of samples to generate x size of the visible layer x number of generation steps
+    hid_prob = torch.zeros(len(self.rbm_layers),numcases,hidden_layer_size, nr_gen_steps, device=self.DEVICE)
+    hid_states = torch.zeros(len(self.rbm_layers), numcases,hidden_layer_size, nr_gen_steps, device=self.DEVICE)
+    vis_prob = torch.zeros(numcases, vis_layerSize, nr_gen_steps, device=self.DEVICE)
+    vis_states = torch.zeros(numcases ,vis_layerSize, nr_gen_steps, device=self.DEVICE)
+
+
+    for gen_step in range(0, nr_gen_steps): #for each generation step...
+        if gen_step==0: #if it is the 1st step of generation...
+            hid_prob[2,:,:,gen_step]  = input_hid_prob #the hidden probability is the one in the input
+            hid_states[2,:,:,gen_step]  = input_hid_prob
+            c=1 # counter of layer depth
+            for rbm in reversed(self.rbm_layers): #The reversed() function is used to reverse the order of elements in an iterable (e.g., a list )
+                if c==1: #if it is the upper layer...
+                    p_v, v = rbm.backward(input_hid_prob) #compute the activity of the layer below using the biasing vector
+                    layer_size = v.shape[1]
+                    #i store the hid prob and state of the layer below
+                    hid_prob[2-c,:,:layer_size,gen_step]  = p_v
+                    hid_states[2-c,:,:layer_size,gen_step]  = v 
+                else:#if the layer selected is below the upper layer
+                    if c<len(self.rbm_layers): #if the layer selected is not the one above the visible layer (i.e. below there is another hidden layer)
+                        p_v, v = rbm.backward(v)
+                        layer_size = v.shape[1]
+                        #i store the hid prob and state of the layer below
+                        hid_prob[2-c,:,:layer_size,gen_step]  = p_v 
+                        hid_states[2-c,:,:layer_size,gen_step]  = v
+                    else: #if the layer below is the visible later
+                        v, p_v = rbm.backward(v) #passo la probabilità (che in questo caso è v) dopo
+                        layer_size = v.shape[1]
+                        #i store the visible state and probabilities
+                        vis_prob[:,:,gen_step]  = v 
+                        vis_states[:,:,gen_step]  = v
+                c=c+1#for each layer i iterate, i update the counter
+        else: #after the 1st gen step
+            #from the visible state obtained in the previous activation, compute the activation of the upper layer
+            for rbm in self.rbm_layers:
+                p_v, v = rbm(v)
+            #i store the probability and state of the upper layer
+            hid_prob[2,:,:,gen_step]  = p_v 
+            hid_states[2,:,:,gen_step]  = v
+            #and i do the same as in the first step(code below)
+            c=1
+            for rbm in reversed(self.rbm_layers): 
+                if c<len(self.rbm_layers):
+                    p_v, v = rbm.backward(v)
+                    layer_size = v.shape[1]
+                    hid_prob[2-c,:,:layer_size,gen_step]  = p_v #the hidden probability is the one in the input
+                    hid_states[2-c,:,:layer_size,gen_step]  = v
+                else:
+                    v, p_v = rbm.backward(v)
+                    layer_size = v.shape[1]
+                    vis_prob[:,:,gen_step]  = v #the hidden probability is the one in the input
+                    vis_states[:,:,gen_step]  = v
+                c=c+1
+    #the result dict will contain the output of the whole generation process
+    result_dict = dict(); 
+    result_dict['hid_states'] = hid_states
+    result_dict['vis_states'] = vis_states
+    result_dict['hid_prob'] = hid_prob
+    result_dict['vis_prob'] = vis_prob
+
+    return result_dict
+        
+
 
 class gDBN(DBN):
     
-    def __init__(self, alg_name, dataset_id, init_scheme, path_model, epochs):
-        super(gDBN, self).__init__(alg_name, dataset_id, init_scheme, path_model, epochs)
+    def __init__(self, alg_name, dataset_id, init_scheme, path_model, epochs, DEVICE = 'cuda'):
+        super(gDBN, self).__init__(alg_name, dataset_id, init_scheme, path_model, epochs, DEVICE = DEVICE)
         
         self.algo = 'g'
     #end
@@ -187,14 +304,14 @@ class gDBN(DBN):
 
 class iDBN(DBN):
     
-    def __init__(self, alg_name, dataset_id, init_scheme, path_model, epochs, last_layer_sz=1000):
-        super(iDBN, self).__init__(alg_name, dataset_id, init_scheme, path_model, epochs, last_layer_sz =1000)
+    def __init__(self, alg_name, dataset_id, init_scheme, path_model, epochs, DEVICE = 'cuda', last_layer_sz=1000):
+        super(iDBN, self).__init__(alg_name, dataset_id, init_scheme, path_model, epochs,DEVICE = DEVICE, last_layer_sz =1000)
         
         self.algo = 'i'
     #end
     
     def train(self, Xtrain, Xtest, Ytrain, Ytest, lparams, 
-              readout = False, num_discr = False):
+            readout = False, num_discr = False):
         
         for rbm in self.rbm_layers:
             rbm.dW = torch.zeros_like(rbm.W)
@@ -258,8 +375,8 @@ class iDBN(DBN):
 
 class fsDBN(DBN):
     
-    def __init__(self, alg_name, dataset_id, init_scheme, path_model, epochs):
-        super(fsDBN, self).__init__(alg_name, dataset_id, init_scheme, path_model, epochs)
+    def __init__(self, alg_name, dataset_id, init_scheme, path_model, epochs, DEVICE = 'cuda'):
+        super(fsDBN, self).__init__(alg_name, dataset_id, init_scheme, path_model, epochs, DEVICE = DEVICE)
         
         self.algo = 'fs'
     #end
@@ -328,3 +445,4 @@ class fsDBN(DBN):
         #end LAYERS
         
 #end
+

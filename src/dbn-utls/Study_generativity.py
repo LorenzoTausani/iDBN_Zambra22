@@ -11,59 +11,8 @@ import Classifiers
 import methods
 from Classifiers import *
 from methods import *
-from google.colab import files
 from itertools import combinations
-
-def compute_inverseW_for_lblBiasing_ZAMBRA(model,train_dataset, L=[]):
-
-    lbls = train_dataset['labels'].view(-1) # Flatten the labels in the training dataset
-    Num_classes= model.Num_classes  # Get the number of classes from the model
-    # Get the number of batches and batch size from the training dataset
-    nr_batches = train_dataset['data'].shape[0]
-    BATCH_SIZE = train_dataset['data'].shape[1]
-
-    # If L is not provided, create a one-hot encoding matrix L for each label (i.e. num classes x examples)
-    if L==[]:
-      L = torch.zeros(Num_classes,lbls.shape[0], device = model.DEVICE)
-      c=0
-      for lbl in lbls:
-          L[int(lbl),c]=1 #put =1 only the idx corresponding to the label of that example
-          c=c+1
-    else:
-      L = L.view(40, -1) #for CelebA with all 40 labels (UNUSED)
-
-    p_v, v = model(train_dataset['data'].cuda(), only_forward = True) #one step hidden layer of the training data by the model
-    V_lin = v.view(nr_batches*BATCH_SIZE, model.top_layer_size)
-    #I compute the inverse of the weight matrix of the linear classifier. weights_inv has shape (model.Num_classes x Hidden layer size (10 x 1000))
-    weights_inv = torch.transpose(torch.matmul(torch.transpose(V_lin,0,1), torch.linalg.pinv(L)), 0, 1)
-
-    model.weights_inv = weights_inv
-
-    return weights_inv
-
-def label_biasing_ZAMBRA(model, on_digits=1, topk = 149):
-
-    # aim of this function is to implement the label biasing procedure described in
-    # https://www.frontiersin.org/articles/10.3389/fpsyg.2013.00515/full
-    
-    Num_classes=model.Num_classes
-    # Now i set the label vector from which i will obtain the hidden layer of interest 
-    Biasing_vec = torch.zeros (Num_classes,1, device = model.DEVICE)
-    Biasing_vec[on_digits] = 1
-
-    #I compute the biased hidden vector as the matmul of the trasposed weights_inv and the biasing vec. gen_hidden will have size (Hidden layer size x 1)
-    gen_hidden= torch.matmul(torch.transpose(model.weights_inv,0,1), Biasing_vec)
-
-    if topk>-1: #ATTENZIONE: label biasing con più di una label attiva (e.g. on_digits=[4,6]) funziona UNICAMENTE con topk>-1 (i.e. attivando le top k unità piu attive e silenziando le altre)
-    #In caso contrario da errore CUDA non meglio specificato
-      H = torch.zeros_like(gen_hidden, device = model.DEVICE) #crate an empty array of the same shape of gen_hidden 
-      for c in range(gen_hidden.shape[1]): # for each example in gen_hidden...
-        top_indices = torch.topk(gen_hidden[:,c], k=topk).indices # compute the most active indexes
-        H[top_indices,c] = 1 #set the most active indexes to 0
-      gen_hidden = H # gen_hidden is now binary (1 or 0)
-
-    return gen_hidden
-
+from misc import save_mat_xlsx
 
 def generate_from_hidden_ZAMBRA(dbn, input_hid_prob, nr_gen_steps=1):
     #input_hid_prob has size Nr_hidden_units x num_cases. Therefore i transpose it
@@ -228,14 +177,7 @@ class Intersection_analysis_ZAMBRA:
       return d, df_average,df_sem, Transition_matrix_rowNorm
     
 def Chimeras_nr_visited_states_ZAMBRA(model, VGG_cl, Ian =[], topk=149, apprx=1,plot=1,compute_new=1, nr_sample_generated =100, entropy_correction=[],cl_labels=[], lS=25):
-    def save_mat_xlsx(my_array, filename='my_res.xlsx'):
-        # create a pandas dataframe from the numpy array
-        my_dataframe = pd.DataFrame(my_array)
 
-        # save the dataframe as an excel file
-        my_dataframe.to_excel(filename, index=False)
-        # download the file
-        files.download(filename)
     #Transition_matrix_tensor = torch.zeros((11, 11, 55), device='cuda') #NOT USED
     c_Tmat = 0
     n_digits = model.Num_classes

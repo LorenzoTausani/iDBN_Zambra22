@@ -16,7 +16,6 @@ from pathlib import Path
 from misc import decrease_labels_by_10, reshape_data, MyDataset
 from dbns import *
 from Classifiers import *
-from Study_generativity import compute_inverseW_for_lblBiasing_ZAMBRA
 
 def data_and_labels(data_train: Dataset, BATCH_SIZE: int,
                     NUM_FEAT: int,DATASET_ID: str,n_cols_labels: int):
@@ -283,8 +282,8 @@ def tool_loader_ZAMBRA(DEVICE,  selected_idx = [], only_data = True,classifier_y
     
     if only_data: #if only the processed data are needed...
         return train_dataset_original, test_dataset_original 
-    if torch.cuda.is_available():
-        torch.set_default_tensor_type('torch.cuda.FloatTensor') #PyTorch will use GPU (CUDA) tensors as the default tensor type.
+    #PyTorch will use GPU (CUDA) tensors as the default tensor type.
+    if torch.cuda.is_available(): torch.set_default_tensor_type('torch.cuda.FloatTensor')
     if not(Load_DBN_yn == 0 or Load_DBN_yn == 1):
         Load_DBN_yn = int(input('Do you want to load a iDBN (Zambra 22 style) or do you want to train it? (1=yes, 0=no)'))    
     if Load_DBN_yn == 0: #if the user chose to train a iDBN from scratch...
@@ -298,20 +297,18 @@ def tool_loader_ZAMBRA(DEVICE,  selected_idx = [], only_data = True,classifier_y
         loss_metrics = np.zeros((CPAR['RUNS'], LPAR['EPOCHS'], CPAR['LAYERS']))
         acc_metrics  = np.zeros((CPAR['RUNS'], LPAR['EPOCHS'], CPAR['LAYERS']))
         test_repr    = np.zeros((CPAR['RUNS']))
-        Weber_fracs  = list()
-        psycurves    = list() 
         PATH_MODEL = os.getcwd()  
         # Train the DBN
         for run in range(CPAR['RUNS']):
             print(f'\n\n---Run {run}\n')    
             if CPAR['ALG_NAME'] == 'g':
-                dbn = gDBN(CPAR['ALG_NAME'], DATASET_ID, CPAR['INIT_SCHEME'], PATH_MODEL, LPAR['EPOCHS']).to(DEVICE)
+                dbn = gDBN(CPAR['ALG_NAME'], DATASET_ID, CPAR['INIT_SCHEME'], PATH_MODEL, LPAR['EPOCHS'], DEVICE = DEVICE)
                 dbn.train(Xtrain, Xtest, Ytrain, Ytest, LPAR, readout = CPAR['READOUT'])
             elif CPAR['ALG_NAME'] == 'i':
-                dbn = iDBN(CPAR['ALG_NAME'], DATASET_ID, CPAR['INIT_SCHEME'], PATH_MODEL, LPAR['EPOCHS'], last_layer_sz =1000).to(DEVICE)
+                dbn = iDBN(CPAR['ALG_NAME'], DATASET_ID, CPAR['INIT_SCHEME'], PATH_MODEL, LPAR['EPOCHS'], DEVICE = DEVICE, last_layer_sz =1000)
                 dbn.train(Xtrain, Xtest, Ytrain, Ytest, LPAR, readout = CPAR['READOUT'], num_discr = CPAR['NUM_DISCR'])
             elif CPAR['ALG_NAME'] == 'fs':
-                dbn = fsDBN(CPAR['ALG_NAME'], DATASET_ID, CPAR['INIT_SCHEME'], PATH_MODEL, LPAR['EPOCHS']).to(DEVICE)
+                dbn = fsDBN(CPAR['ALG_NAME'], DATASET_ID, CPAR['INIT_SCHEME'], PATH_MODEL, LPAR['EPOCHS'], DEVICE = DEVICE)
                 dbn.train(Xtrain, Xtest, Ytrain, Ytest, LPAR)
                 
             for layer_id, rbm in enumerate(dbn.rbm_layers):
@@ -319,18 +316,17 @@ def tool_loader_ZAMBRA(DEVICE,  selected_idx = [], only_data = True,classifier_y
                 acc_metrics[run, :, layer_id] = rbm.acc_profile
             #end    
             test_repr[run] = dbn.test(Xtest, Ytest)[0]
-            dbn.DEVICE = DEVICE   
             name = dbn.get_name()   
             if not('CelebA' in DATASET_ID): #if you are not dealing with CelebA...
                 dbn.Num_classes = 10 #i.e. the 10 classes of MNIST
-                compute_inverseW_for_lblBiasing_ZAMBRA(dbn,train_dataset) #i compute the inverse weight matrix that i will use for label biasing on the top layer of the DBN
+                dbn.invW4LB(train_dataset) #i compute the inverse weight matrix that i will use for label biasing on the top layer of the DBN
             elif not(selected_idx == []): #if you use CelebA with one-hot labels (i.e. 4 labels usually)
                 dbn.Num_classes = 2**len(selected_idx) #the number of classes is 2 to the power of the selected classes 
                 #compute_inverseW_for_lblBiasing_ZAMBRA(dbn,train_dataset,L = train_dataset['labels'])
-                compute_inverseW_for_lblBiasing_ZAMBRA(dbn,train_dataset)
+                dbn.invW4LB(train_dataset)
             else: #when you consider the multilabel case... (NOT USED)
                 dbn.Num_classes = 40
-                compute_inverseW_for_lblBiasing_ZAMBRA(dbn,train_dataset, L = train_dataset['labels'])
+                dbn.invW4LB(train_dataset, L = train_dataset['labels'])
             fname = f'{name}_{dbn.Num_classes}classes_nEp{LPAR['EPOCHS']}_nL{len(dbn.rbm_layers)}_lastL{dbn.top_layer_size}_bsz{batch_sz}'
             dbn.fname = fname
             #i save the trained DBN
