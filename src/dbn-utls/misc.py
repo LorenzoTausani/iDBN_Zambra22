@@ -33,3 +33,8 @@ class MyDataset(Dataset):
             feature = self.transform(feature)
 
         return feature, label
+    
+def decrease_labels_by_10(data):
+    image, label = data
+    label -= 10  # Sottrai 10 da ciascuna etichetta
+    return image, label
