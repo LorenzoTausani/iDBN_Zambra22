@@ -316,17 +316,14 @@ def tool_loader_ZAMBRA(DEVICE,  selected_idx = [], only_data = True,classifier_y
                 acc_metrics[run, :, layer_id] = rbm.acc_profile
             #end    
             test_repr[run] = dbn.test(Xtest, Ytest)[0]
-            name = dbn.get_name()   
-            if not('CelebA' in DATASET_ID): #if you are not dealing with CelebA...
-                dbn.Num_classes = 10 #i.e. the 10 classes of MNIST
-                dbn.invW4LB(train_dataset) #i compute the inverse weight matrix that i will use for label biasing on the top layer of the DBN
-            elif not(selected_idx == []): #if you use CelebA with one-hot labels (i.e. 4 labels usually)
-                dbn.Num_classes = 2**len(selected_idx) #the number of classes is 2 to the power of the selected classes 
-                #compute_inverseW_for_lblBiasing_ZAMBRA(dbn,train_dataset,L = train_dataset['labels'])
-                dbn.invW4LB(train_dataset)
-            else: #when you consider the multilabel case... (NOT USED)
-                dbn.Num_classes = 40
-                dbn.invW4LB(train_dataset, L = train_dataset['labels'])
+            name = dbn.get_name() 
+            #if you use CelebA with one-hot labels (i.e. 4 labels usually)
+            if 'CelebA' in DATASET_ID and not(selected_idx == []):
+                #the number of classes is 2 to the power of the selected classes 
+                dbn.Num_classes = 2**len(selected_idx)
+            #i compute the inverse weight matrix that i will use for label biasing on the top layer of the DBN
+            dbn.invW4LB(train_dataset)   
+                
             fname = f"{name}_{dbn.Num_classes}classes_nEp{LPAR['EPOCHS']}_nL{len(dbn.rbm_layers)}_lastL{dbn.top_layer_size}_bsz{batch_sz}"
             dbn.fname = fname
             #i save the trained DBN

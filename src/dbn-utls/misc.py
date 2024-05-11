@@ -1,6 +1,16 @@
+import numpy as np
 import pandas as pd
 from google.colab import files
 from torch.utils.data import Dataset
+import math
+
+#function for computing SEM
+def SEM(measure):
+    nr_of_measures = len(measure)
+    if not(isinstance(measure, np.ndarray)):
+        measure = np.asarray(measure)
+    sem = np.std(measure)/math.sqrt(nr_of_measures)
+    return sem
 
 def save_mat_xlsx(my_array, filename='my_res.xlsx'):
     # create a pandas dataframe from the numpy array
@@ -9,7 +19,6 @@ def save_mat_xlsx(my_array, filename='my_res.xlsx'):
     my_dataframe.to_excel(filename, index=False)
     # download the file
     files.download(filename)
-
 
 
 def reshape_data(train_ds, batch_sz_real, batch_sz):

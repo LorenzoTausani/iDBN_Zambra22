@@ -210,5 +210,6 @@ class RBM(torch.nn.Module):
         
         return self.act_topdown
     #end
+
         
 #end

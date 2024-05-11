@@ -98,6 +98,9 @@ class DBN(torch.nn.Module):
         self.dataset_id = dataset_id
         self.path_model = path_model
         self.top_layer_size = self.rbm_layers[-1].Nout
+        
+        self.Num_classes = None
+        self.classes = None
     #end
     
     def forward(self, v, only_forward = False):
@@ -312,6 +315,10 @@ class iDBN(DBN):
     
     def train(self, Xtrain, Xtest, Ytrain, Ytest, lparams, 
             readout = False, num_discr = False):
+        
+        if self.Num_classes is None and not(self.dataset_id == 'CelebA'):
+            self.classes = torch.unique(Ytrain.view(-1))
+            self.Num_classes = len(self.classes) #with MNIST = 10
         
         for rbm in self.rbm_layers:
             rbm.dW = torch.zeros_like(rbm.W)
