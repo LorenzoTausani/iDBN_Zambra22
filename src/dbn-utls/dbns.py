@@ -214,16 +214,23 @@ class DBN(torch.nn.Module):
         return gen_hidden
     
     def label_biasing(self, topk: int = 149,n_reps: int = 100):
-        gen_hiddens = torch.cat([self.getH_label_biasing(on_digits=dig, topk=topk) 
+        LB_hidden = torch.cat([self.getH_label_biasing(on_digits=dig, topk=topk) 
                             for dig in range(self.Num_classes)], dim=1)
-        #gen_labels is a tensor containing the labels of the generated examples.
+        #LB_labels is a tensor containing the labels of the generated examples.
         #This will help for computing classification accuracy
-        gen_labels = torch.tensor(range(self.Num_classes), device = self.DEVICE)
-        #let's repeat each row of gen_hiddens n_reps times 
+        LB_labels = torch.tensor(range(self.Num_classes), device = self.DEVICE)
+        #let's repeat each row of LB_hidden n_reps times 
         #(to compute some statistics about the generation)
-        gen_hiddens = gen_hiddens.repeat(1,n_reps)
-        gen_labels=gen_labels.repeat(n_reps)
-        return gen_hiddens, gen_labels
+        LB_hidden = LB_hidden.repeat(1,n_reps)
+        LB_labels=LB_labels.repeat(n_reps)
+        return LB_hidden, LB_labels
+    
+    def random_hidden_bias(self, n: int, size: tuple):
+        hidden = torch.zeros(size)
+        for i in range(size[0]):
+            indices = random.sample(range(size[1]), n)
+            hidden[i, indices] = 1
+        return hidden
     
     def top_down_1step(self,gen_step,hid_prob,hid_states,vis_prob,vis_states):
         v = hid_states[self.idx_max_depth,:,:,gen_step]
