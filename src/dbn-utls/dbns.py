@@ -166,7 +166,7 @@ class DBN(torch.nn.Module):
             name += f'_run{run}'
         #end
         torch.save(self.to(torch.device('cpu')),
-                   open(os.path.join(self.path_model, f'{name}.pkl'), 'wb'))
+                open(os.path.join(self.path_model, f'{name}.pkl'), 'wb'))
     #end
 #end
 
@@ -229,22 +229,28 @@ class DBN(torch.nn.Module):
         v = hid_states[self.idx_max_depth,:,:,gen_step]
         c=1 # counter of layer depth
         for rbm in reversed(self.rbm_layers):
-            #if the layer selected is not the one above the visible layer (i.e. below there is another hidden layer)
-            if c<self.depth: 
-                p_v, v = rbm.backward(v)
+            if c==1: #if it is the upper layer...
+                p_v, v = rbm.backward(v) #compute the activity of the layer below using the biasing vector
                 layer_size = v.shape[1]
                 #i store the hid prob and state of the layer below
-                hid_prob[self.idx_max_depth-c,:,:layer_size,gen_step]  = p_v 
-                hid_states[self.idx_max_depth-c,:,:layer_size,gen_step]  = v
-            else: #if the layer below is the visible later
-                v, p_v = rbm.backward(v) #passo la probabilità (che in questo caso è v) dopo
-                layer_size = v.shape[1]
-                #i store the visible state and probabilities
-                vis_prob[:,:,gen_step]  = v 
-                vis_states[:,:,gen_step]  = v
+                hid_prob[self.idx_max_depth-c,:,:layer_size,gen_step]  = p_v
+                hid_states[self.idx_max_depth-c,:,:layer_size,gen_step]  = v 
+            else:#if the layer selected is below the upper layer
+                #if the layer selected is not the one above the visible layer (i.e. below there is another hidden layer)
+                if c<self.depth: 
+                    p_v, v = rbm.backward(v)
+                    layer_size = v.shape[1]
+                    #i store the hid prob and state of the layer below
+                    hid_prob[self.idx_max_depth-c,:,:layer_size,gen_step]  = p_v 
+                    hid_states[self.idx_max_depth-c,:,:layer_size,gen_step]  = v
+                else: #if the layer below is the visible later
+                    v, p_v = rbm.backward(v) #passo la probabilità (che in questo caso è v) dopo
+                    layer_size = v.shape[1]
+                    #i store the visible state and probabilities
+                    vis_prob[:,:,gen_step]  = v 
+                    vis_states[:,:,gen_step]  = v
             c=c+1
         return hid_prob,hid_states,vis_prob,vis_states
-    
     
     def generate_from_hidden(self, input_hid_prob, nr_gen_steps: int=1):
         #input_hid_prob has size Nr_hidden_units x num_cases. Therefore i transpose it
@@ -265,8 +271,10 @@ class DBN(torch.nn.Module):
                 #the hidden probability is the one in the input
                 hid_prob[self.idx_max_depth,:,:,gen_step]  = input_hid_prob
                 hid_states[self.idx_max_depth,:,:,gen_step]  = input_hid_prob
+                #da qui diverge rispetto al vecchio generate_from_hidden
             else:
                 v = vis_states[:,:,gen_step-1]
+                #do the forward up to the last layer
                 for rbm in self.rbm_layers:
                     p_v, v = rbm(v)
                 #i store the probability and state of the upper layer
@@ -351,6 +359,7 @@ class DBN(torch.nn.Module):
         result_dict['hid_prob'] = hid_prob
         result_dict['vis_prob'] = vis_prob
         return result_dict
+    
 
 class gDBN(DBN):
     
