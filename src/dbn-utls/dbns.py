@@ -234,6 +234,8 @@ class DBN(torch.nn.Module):
                 p_v, v = rbm.backward(v)
                 layer_size = v.shape[1]
                 #i store the hid prob and state of the layer below
+                # (note: in case the hidden layer it's smaller, i store the vals up to the size of the hidden layer
+                # (i.e. :layer_size))
                 hid_prob[self.idx_max_depth-c,:,:layer_size,gen_step]  = p_v 
                 hid_states[self.idx_max_depth-c,:,:layer_size,gen_step]  = v
             else: #if the layer below is the visible later
@@ -286,77 +288,6 @@ class DBN(torch.nn.Module):
 
         return result_dict
         
-    def generate_from_hidden_ZAMBRA(self, input_hid_prob, nr_gen_steps: int=1):
-        #input_hid_prob has size Nr_hidden_units x num_cases. Therefore i transpose it
-        input_hid_prob = torch.transpose(input_hid_prob,0,1)
-
-        numcases = input_hid_prob.size()[0] #numbers of samples to generate
-        hidden_layer_size = input_hid_prob.size()[1]
-        vis_layerSize = self.rbm_layers[0].Nin
-        # Initialize tensors to store hidden and visible probabilities and states
-        # hid prob/states : nr layers x numbers of samples to generate x size of the hidden layer x number of generation steps
-        # vis prob/states : numbers of samples to generate x size of the visible layer x number of generation steps
-        hid_prob = torch.zeros(len(self.rbm_layers),numcases,hidden_layer_size, nr_gen_steps, device=self.DEVICE)
-        hid_states = torch.zeros(len(self.rbm_layers), numcases,hidden_layer_size, nr_gen_steps, device=self.DEVICE)
-        vis_prob = torch.zeros(numcases, vis_layerSize, nr_gen_steps, device=self.DEVICE)
-        vis_states = torch.zeros(numcases ,vis_layerSize, nr_gen_steps, device=self.DEVICE)
-        for gen_step in range(0, nr_gen_steps): #for each generation step...
-                if gen_step==0: #if it is the 1st step of generation...
-                    hid_prob[2,:,:,gen_step]  = input_hid_prob #the hidden probability is the one in the input
-                    hid_states[2,:,:,gen_step]  = input_hid_prob
-                    c=1 # counter of layer depth
-                    for rbm in reversed(self.rbm_layers): #The reversed() function is used to reverse the order of elements in an iterable (e.g., a list )
-                        if c==1: #if it is the upper layer...
-                            p_v, v = rbm.backward(input_hid_prob) #compute the activity of the layer below using the biasing vector
-                            layer_size = v.shape[1]
-                            #i store the hid prob and state of the layer below
-                            hid_prob[2-c,:,:layer_size,gen_step]  = p_v
-                            hid_states[2-c,:,:layer_size,gen_step]  = v 
-                        else:#if the layer selected is below the upper layer
-                            if c<len(self.rbm_layers): #if the layer selected is not the one above the visible layer (i.e. below there is another hidden layer)
-                                p_v, v = rbm.backward(v)
-                                layer_size = v.shape[1]
-                                #i store the hid prob and state of the layer below
-                                hid_prob[2-c,:,:layer_size,gen_step]  = p_v 
-                                hid_states[2-c,:,:layer_size,gen_step]  = v
-                            else: #if the layer below is the visible later
-                                v, p_v = rbm.backward(v) #passo la probabilità (che in questo caso è v) dopo
-                                layer_size = v.shape[1]
-                                #i store the visible state and probabilities
-                                vis_prob[:,:,gen_step]  = v 
-                                vis_states[:,:,gen_step]  = v
-                        c=c+1#for each layer i iterate, i update the counter
-                else: #after the 1st gen step
-                    #from the visible state obtained in the previous activation, compute the activation of the upper layer
-                    for rbm in self.rbm_layers:
-                        p_v, v = rbm(v)
-                    #i store the probability and state of the upper layer
-                    hid_prob[2,:,:,gen_step]  = p_v 
-                    hid_states[2,:,:,gen_step]  = v
-                    #and i do the same as in the first step(code below)
-                    c=1
-                    for rbm in reversed(self.rbm_layers): 
-                        if c<len(self.rbm_layers):
-                            p_v, v = rbm.backward(v)
-                            layer_size = v.shape[1]
-                            hid_prob[2-c,:,:layer_size,gen_step]  = p_v #the hidden probability is the one in the input
-                            hid_states[2-c,:,:layer_size,gen_step]  = v
-                        else:
-                            v, p_v = rbm.backward(v)
-                            layer_size = v.shape[1]
-                            vis_prob[:,:,gen_step]  = v #the hidden probability is the one in the input
-                            vis_states[:,:,gen_step]  = v
-                        c=c+1
-        #the result dict will contain the output of the whole generation process
-        result_dict = dict(); 
-        result_dict['hid_states'] = hid_states
-        result_dict['vis_states'] = vis_states
-        result_dict['hid_prob'] = hid_prob
-        result_dict['vis_prob'] = vis_prob
-        return result_dict
-    
-
-
 class gDBN(DBN):
     
     def __init__(self, alg_name, dataset_id, init_scheme, path_model, epochs, DEVICE = 'cuda'):
