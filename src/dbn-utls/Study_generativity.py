@@ -80,7 +80,7 @@ class Intersection_analysis:
           result_dict_biasing[str(row)+','+str(col)] = common_el_idxs_biasing #store the units in the intersection
           digit_digit_common_elements_count_biasing[row,col] = counter_biasing
 
-      self.result_dict_biasing = result_dict_biasing 
+      self.intersections = result_dict_biasing 
 
       print(digit_digit_common_elements_count_biasing)
       #lbl_bias_freqV = digit_digit_common_elements_count_biasing.view(100)/torch.sum(digit_digit_common_elements_count_biasing.view(100))
