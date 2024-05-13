@@ -37,32 +37,25 @@ class Intersection_analysis_ZAMBRA:
           intersections[f"{cat1},{cat2}"] = torch.tensor(sorted(list(set(top_k_idxs_LB[cat1].tolist()).intersection(top_k_idxs_LB[cat2].tolist()))))
       self.intersections = intersections
     
-    def generate_chimera_lbl_biasing(self,VGG_cl, elements_of_interest = [8,2], temperature=1, nr_of_examples = 1000, plot=0, entropy_correction=[]):
+    def generate_chimera(self,classifier, cats2intersect = [8,2], sample_nr = 1000, plot=0):
       #this function does generation from chimeras obtained with the intersection method
-      b_vec =torch.zeros(nr_of_examples,self.model.top_layer_size) 
-      if not(elements_of_interest =='rand'): #if you don't want to generate from random chimeras
-        dictionary_key = str(elements_of_interest[0])+','+str(elements_of_interest[1]) #entry of interest in the intersection dictionary
-        b_vec[:,self.result_dict_biasing[dictionary_key].long()]=1#activate the entries corresponding the intersection units of interest
-
-      else: #write 'rand' in elements of interest
-        for i in range(nr_of_examples): #for every sample you want to generate
+      cats2intersect= sorted(cats2intersect)
+      biasing_vecs =torch.zeros(sample_nr,self.model.top_layer_size) 
+      if not(cats2intersect =='rand'): #if you don't want to generate from random chimeras
+        #activate the entries corresponding the intersection units of interest
+        biasing_vecs[:,self.intersections[f"{cats2intersect[0]},{cats2intersect[1]}"]]=1
+      else: #cats2intersect = 'rand'
+        for i in range(sample_nr): #for every sample you want to generate
           #select two random classes
-          n1 = random.randint(0, self.model.Num_classes-1) 
-          n2 = random.randint(0, self.model.Num_classes-1)
+          n1, n2 = sorted(random.sample(range(self.model.Num_classes), 2))
           #activate the entries corresponding the intersection units of interest
-          dictionary_key = str(n1)+','+str(n2) 
-          b_vec[i,self.result_dict_biasing[dictionary_key].long()]=1
+          biasing_vecs[i,self.intersections[f"{n1},{n2}"]]=1
 
-      b_vec = torch.transpose(b_vec,0,1)
-      #b_vec = torch.unsqueeze(b_vec,0) #NOT USED
-      d = generate_from_hidden_ZAMBRA(self.model, b_vec, nr_gen_steps=self.nr_steps) #generate from the hidden vectors produced
-      
-      d = Classifier_accuracy(d, VGG_cl, self.model, plot=0, Thresholding_entropy=entropy_correction) #compute the accuracy of the classifier over the generation period
+      biasing_vecs = torch.transpose(biasing_vecs,0,1)
+      #generate from the hidden vectors produced
+      d = self.model.generate_from_hidden(biasing_vecs, nr_gen_steps=self.nr_steps)  
+      d = Classifier_accuracy(d, classifier, self.model, plot=0) #compute the accuracy of the classifier over the generation period
       df_average,df_sem, Transition_matrix_rowNorm = classification_metrics(d,self.model, Plot=plot, Ian=1)
-      
-      # if nr_of_examples < 16:
-      #   Plot_example_generated(d, self.model ,row_step = 10, dS=20, custom_steps = True, Show_classification = False)
-
       
       return d, df_average,df_sem, Transition_matrix_rowNorm
     
@@ -93,7 +86,7 @@ def Chimeras_nr_visited_states_ZAMBRA(model, VGG_cl, Ian =[], topk=149, apprx=1,
       if Ian!=[]:
         for row in range(n_digits):
           for col in range(row,n_digits):
-            d, df_average,df_sem, Transition_matrix_rowNorm = Ian.generate_chimera_lbl_biasing(VGG_cl,elements_of_interest = [row,col], nr_of_examples = nr_sample_generated, temperature = 1, plot=0, entropy_correction= entropy_correction)
+            d, df_average,df_sem, Transition_matrix_rowNorm = Ian.generate_chimera_lbl_biasing(VGG_cl,cats2intersect = [row,col], sample_nr = nr_sample_generated, temperature = 1, plot=0, entropy_correction= entropy_correction)
             if not(row==col):
               #Transition_matrix_tensor[:,:, c_Tmat] = Transition_matrix_rowNorm #NOT USED
               c_Tmat = c_Tmat+1
