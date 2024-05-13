@@ -35,57 +35,6 @@ class Intersection_analysis:
           #Find the intersection of the top k active indices betw the 2 cats
           intersections[f"{cat1},{cat2}"] = torch.tensor(sorted(list(set(top_k_idxs_LB[cat1].tolist()).intersection(top_k_idxs_LB[cat2].tolist()))))
       self.intersections = intersections
-      
-    def do_intersection_analysis_ZAMBRA(self):
-      #for the intersection method
-      for dig in range(self.model.Num_classes): #for each class...
-        g_H = self.model.getH_label_biasing( on_digits=dig, topk = -1) #...do label biasing activating just that digit
-        if dig == 0:
-            hid_bias = g_H
-        else:
-            hid_bias = torch.hstack((hid_bias,g_H)) #stack together the label biasing vector for each digit
-
-      vettore_indici_allDigits_biasing = torch.empty((0),device= self.model.DEVICE)
-
-      for digit in range(self.model.Num_classes): #for each digit
-        hid_vec_B = hid_bias[:,digit] #get the hidden state obtained by label biasing with the specific class 'digit'
-        #in the next two lines i find the top p indexes in terms of activation
-        top_values_biasing, top_idxs_biasing = torch.topk(hid_vec_B, self.top_k_Hidden) 
-        vettore_indici_allDigits_biasing = torch.cat((vettore_indici_allDigits_biasing,top_idxs_biasing),0) #I concatenate the top p indexes for all digits in this vector
-
-      unique_idxs_biasing,count_unique_idxs_biasing = torch.unique(vettore_indici_allDigits_biasing,return_counts=True) # Of the indexes found i take just the ones that are not repeated      
-
-      digit_digit_common_elements_count_biasing = torch.zeros((self.model.Num_classes,self.model.Num_classes)) #in here i will count the number of common elements in each intersection
-      self.unique_H_idxs_biasing = unique_idxs_biasing
-
-      result_dict_biasing ={} #here i will store, for each combination of classes (keys), the units in intersection between them
-      #for each category i iterate to compute the entries of the nr.classes x nr.classes matrices
-      #itero per ogni digit per calcolare le entrate delle matrici 10 x 10
-      for row in range(self.model.Num_classes): 
-        for col in range(self.model.Num_classes):
-
-          common_el_idxs_biasing = torch.empty((0),device= self.model.DEVICE)
-
-          counter_biasing = 0
-          for id in unique_idxs_biasing: #for each of the top indices
-            digits_found = torch.floor(torch.nonzero(vettore_indici_allDigits_biasing==id)/self.top_k_Hidden)
-            #torch.nonzero(vettore_indici_allDigits_biasing==id) finds the positions in the array vettore_indici_allDigits_biasing  where there is the value id is present
-            #indeed, given that the vector vettore_indici_allDigits_biasing contains the top 100 most active units for each digit, if i divide the indexes by 100 (i.e. top_k_Hidden)
-            #then i will find for which digit the unit id was active.
-
-            if torch.any(digits_found==row) and torch.any(digits_found==col): #if the digits found present both the row and the col digits...
-                common_el_idxs_biasing = torch.hstack((common_el_idxs_biasing,id)) #add the id to the vector of ids that will be used for intersection method biasing
-                counter_biasing += 1 # i count the number of intersection elements to fill in the digit_digit_common_elements_count_biasing matrix
-
-          result_dict_biasing[str(row)+','+str(col)] = common_el_idxs_biasing #store the units in the intersection
-          digit_digit_common_elements_count_biasing[row,col] = counter_biasing
-
-      self.intersections = result_dict_biasing 
-
-      print(digit_digit_common_elements_count_biasing)
-      #lbl_bias_freqV = digit_digit_common_elements_count_biasing.view(100)/torch.sum(digit_digit_common_elements_count_biasing.view(100))
-
-      return digit_digit_common_elements_count_biasing
     
     def generate_chimera(self,classifier, cats2intersect = [8,2], sample_nr = 1000, plot=0):
       #this function does generation from chimeras obtained with the intersection method
@@ -109,34 +58,6 @@ class Intersection_analysis:
       
       return d, df_average,df_sem, Transition_matrix_rowNorm
 
-    def generate_chimera_lbl_biasing(self,VGG_cl, elements_of_interest = [8,2], temperature=1, nr_of_examples = 1000, plot=0, entropy_correction=[]):
-      #this function does generation from chimeras obtained with the intersection method
-      b_vec =torch.zeros(nr_of_examples,self.model.top_layer_size) 
-      if not(elements_of_interest =='rand'): #if you don't want to generate from random chimeras
-        dictionary_key = str(elements_of_interest[0])+','+str(elements_of_interest[1]) #entry of interest in the intersection dictionary
-        b_vec[:,self.intersections[dictionary_key].long()]=1#activate the entries corresponding the intersection units of interest
-
-      else: #write 'rand' in elements of interest
-        for i in range(nr_of_examples): #for every sample you want to generate
-          #select two random classes
-          n1 = random.randint(0, self.model.Num_classes-1) 
-          n2 = random.randint(0, self.model.Num_classes-1)
-          #activate the entries corresponding the intersection units of interest
-          dictionary_key = str(n1)+','+str(n2) 
-          b_vec[i,self.intersections[dictionary_key].long()]=1
-
-      b_vec = torch.transpose(b_vec,0,1)
-      #b_vec = torch.unsqueeze(b_vec,0) #NOT USED
-      d = self.model.generate_from_hidden(b_vec, nr_gen_steps=self.nr_steps) #generate from the hidden vectors produced
-      
-      d = Classifier_accuracy(d, VGG_cl, self.model, plot=0) #compute the accuracy of the classifier over the generation period
-      df_average,df_sem, Transition_matrix_rowNorm = classification_metrics(d,self.model, Plot=plot, Ian=1)
-      
-      # if nr_of_examples < 16:
-      #   Plot_example_generated(d, self.model ,row_step = 10, dS=20, custom_steps = True, Show_classification = False)
-
-      
-      return d, df_average,df_sem, Transition_matrix_rowNorm
 
 def Chimeras_nr_visited_states(model, classifier, Ian =[], topk=149, apprx=1,plot=1,compute_new=1,
                                       nr_sample_generated =100,cl_labels=[], lS=25):
@@ -233,116 +154,7 @@ def Chimeras_nr_visited_states(model, classifier, Ian =[], topk=149, apprx=1,plo
     else:
       return Vis_states_mat, Vis_states_err
     
-
-
-def Chimeras_nr_visited_states_ZAMBRA(model, VGG_cl, Ian =[], topk=149, apprx=1,plot=1,compute_new=1, nr_sample_generated =100, entropy_correction=[],cl_labels=[], lS=25):
-    #Transition_matrix_tensor = torch.zeros((11, 11, 55), device='cuda') #NOT USED
-    c_Tmat = 0
-    n_digits = model.Num_classes
-    if Ian!=[]:
-      fN='Visited_digits_k' + str(Ian.top_k_Hidden)+'.xlsx'
-      fNerr='Visited_digits_error_k' + str(Ian.top_k_Hidden)+'.xlsx'
-      fN_NDST='Nondigit_stateTime_k' + str(Ian.top_k_Hidden)+'.xlsx'
-      fNerr_NDST='Nondigit_stateTime_error_k' + str(Ian.top_k_Hidden)+'.xlsx'
-    else:
-      fN='Visited_digits_Lbiasing_k' + str(topk)+'.xlsx'
-      fNerr='Visited_digits_Lbiasing_error_k' + str(topk)+'.xlsx'
-      fN_NDST='Nondigit_stateTime_Lbiasing_k' + str(topk)+'.xlsx'
-      fNerr_NDST='Nondigit_stateTime_Lbiasing_error_k' + str(topk)+'.xlsx'
-
-    if compute_new==1:
-      #both
-      Vis_states_mat = np.zeros((n_digits, n_digits))
-      Vis_states_err = np.zeros((n_digits, n_digits))
-      if n_digits==10:
-        Non_digit_mat  = np.zeros((n_digits, n_digits))
-        Non_digit_err  = np.zeros((n_digits, n_digits))
-
-      if Ian!=[]:
-        for row in range(n_digits):
-          for col in range(row,n_digits):
-            d, df_average,df_sem, Transition_matrix_rowNorm = Ian.generate_chimera_lbl_biasing(VGG_cl,elements_of_interest = [row,col], nr_of_examples = nr_sample_generated, temperature = 1, plot=0, entropy_correction= entropy_correction)
-            if not(row==col):
-              #Transition_matrix_tensor[:,:, c_Tmat] = Transition_matrix_rowNorm #NOT USED
-              c_Tmat = c_Tmat+1
-            Vis_states_mat[row,col]=df_average.Nr_visited_states[0]
-            Vis_states_err[row,col]=df_sem.Nr_visited_states[0]
-            if n_digits==10:
-              Non_digit_mat[row,col] = df_average['Non-digit'][0]
-              Non_digit_err[row,col] = df_sem['Non-digit'][0]
-      else:
-        numbers = list(range(n_digits))
-        combinations_of_two = list(combinations(numbers, 2))
-
-        for idx, combination in enumerate(combinations_of_two):
-          gen_hidden = model.label_biasing(on_digits=  list(combination), topk = topk)
-          gen_hidden_rep = gen_hidden.repeat(1,nr_sample_generated)
-          d = model.generate_from_hidden(gen_hidden_rep , nr_gen_steps=100)
-          d = Classifier_accuracy(d, VGG_cl,model, labels=[], Batch_sz= 100, plot=0, dS=30, l_sz=3)
-          df_average,df_sem, Transition_matrix_rowNorm = classification_metrics(d,model,Plot=0,dS=50,Ian=1)
-          if not(combination[0]==combination[1]):
-            #Transition_matrix_tensor[:,:, c_Tmat] = Transition_matrix_rowNorm #NOT USED
-            c_Tmat = c_Tmat+1
-          Vis_states_mat[combination[0],combination[1]]=df_average.Nr_visited_states[0]
-          Vis_states_err[combination[0],combination[1]]=df_sem.Nr_visited_states[0]
-          if n_digits==10:
-            Non_digit_mat[combination[0],combination[1]] = df_average['Non-digit'][0]
-            Non_digit_err[combination[0],combination[1]] = df_sem['Non-digit'][0]
-
-
-      save_mat_xlsx(Vis_states_mat, filename=fN)
-      save_mat_xlsx(Vis_states_err, filename=fNerr)
-      if n_digits==10:
-        save_mat_xlsx(Non_digit_mat, filename=fN_NDST)
-        save_mat_xlsx(Non_digit_err, filename=fNerr_NDST)
-
-    else: #load already computed Vis_states_mat
-      if n_digits==10:
-        Non_digit_mat = pd.read_excel(fN_NDST)
-        Non_digit_err = pd.read_excel(fNerr_NDST)
-        # Convert the DataFrame to a NumPy array
-        Non_digit_mat = Non_digit_mat.values
-        Non_digit_err = Non_digit_err.values
-      Vis_states_mat = pd.read_excel(fN)
-      # Convert the DataFrame to a NumPy array
-      Vis_states_mat = Vis_states_mat.values
-
-      Vis_states_err = pd.read_excel(fNerr)
-      # Convert the DataFrame to a NumPy array
-      Vis_states_err = Vis_states_err.values
-
-    if plot==1:
-
-      Vis_states_mat = Vis_states_mat.round(apprx)
-      Vis_states_err = Vis_states_err.round(apprx)
-
-      plt.figure(figsize=(15, 15))
-      mask = np.triu(np.ones_like(Vis_states_mat),k=+1) # k=+1 per rimuovere la diagonale
-      # Set the lower triangle to NaN
-      Vis_states_mat = np.where(mask==0, np.nan, Vis_states_mat)
-      Vis_states_mat = Vis_states_mat.T
-      #ax = sns.heatmap(Vis_states_mat, linewidth=0.5, annot=False,square=True, cbar=False)
-      ax = sns.heatmap(Vis_states_mat, linewidth=0.5, annot=True, annot_kws={"size": lS},square=True,cbar_kws={"shrink": .82}, fmt='.1f', cmap='jet')
-      if not(cl_labels==[]):
-        ax.set_xticklabels(cl_labels)
-        ax.set_yticklabels(cl_labels)
-      #ax.set_xticklabels(T_mat_labels)
-      ax.tick_params(axis='both', labelsize=lS)
-
-      plt.xlabel('Class', fontsize = lS) # x-axis label with fontsize 15
-      plt.ylabel('Class', fontsize = lS) # y-axis label with fontsize 15
-      #cbar = plt.gcf().colorbar(ax.collections[0], location='left', shrink=0.82)
-      cbar = ax.collections[0].colorbar
-      cbar.ax.tick_params(labelsize=lS)
-      plt.show()
-
-    if n_digits==10:
-      #print('final c_Tmat',c_Tmat) #NOT USED
-      return Vis_states_mat, Vis_states_err,Non_digit_mat,Non_digit_err #,Transition_matrix_tensor
-    else:
-      return Vis_states_mat, Vis_states_err
-    
-    
+        
 def Perc_H_act(model, sample_labels, gen_data_dictionary=[], dS = 50, l_sz = 5, layer_of_interest=2):
 
     c=0 #inizializzo il counter per cambiamento colore
