@@ -35,6 +35,57 @@ class Intersection_analysis:
           #Find the intersection of the top k active indices betw the 2 cats
           intersections[f"{cat1},{cat2}"] = torch.tensor(sorted(list(set(top_k_idxs_LB[cat1].tolist()).intersection(top_k_idxs_LB[cat2].tolist()))))
       self.intersections = intersections
+      
+    def do_intersection_analysis_ZAMBRA(self):
+      #for the intersection method
+      for dig in range(self.model.Num_classes): #for each class...
+        g_H = self.model.getH_label_biasing( on_digits=dig, topk = -1) #...do label biasing activating just that digit
+        if dig == 0:
+            hid_bias = g_H
+        else:
+            hid_bias = torch.hstack((hid_bias,g_H)) #stack together the label biasing vector for each digit
+
+      vettore_indici_allDigits_biasing = torch.empty((0),device= self.model.DEVICE)
+
+      for digit in range(self.model.Num_classes): #for each digit
+        hid_vec_B = hid_bias[:,digit] #get the hidden state obtained by label biasing with the specific class 'digit'
+        #in the next two lines i find the top p indexes in terms of activation
+        top_values_biasing, top_idxs_biasing = torch.topk(hid_vec_B, self.top_k_Hidden) 
+        vettore_indici_allDigits_biasing = torch.cat((vettore_indici_allDigits_biasing,top_idxs_biasing),0) #I concatenate the top p indexes for all digits in this vector
+
+      unique_idxs_biasing,count_unique_idxs_biasing = torch.unique(vettore_indici_allDigits_biasing,return_counts=True) # Of the indexes found i take just the ones that are not repeated      
+
+      digit_digit_common_elements_count_biasing = torch.zeros((self.model.Num_classes,self.model.Num_classes)) #in here i will count the number of common elements in each intersection
+      self.unique_H_idxs_biasing = unique_idxs_biasing
+
+      result_dict_biasing ={} #here i will store, for each combination of classes (keys), the units in intersection between them
+      #for each category i iterate to compute the entries of the nr.classes x nr.classes matrices
+      #itero per ogni digit per calcolare le entrate delle matrici 10 x 10
+      for row in range(self.model.Num_classes): 
+        for col in range(self.model.Num_classes):
+
+          common_el_idxs_biasing = torch.empty((0),device= self.model.DEVICE)
+
+          counter_biasing = 0
+          for id in unique_idxs_biasing: #for each of the top indices
+            digits_found = torch.floor(torch.nonzero(vettore_indici_allDigits_biasing==id)/self.top_k_Hidden)
+            #torch.nonzero(vettore_indici_allDigits_biasing==id) finds the positions in the array vettore_indici_allDigits_biasing  where there is the value id is present
+            #indeed, given that the vector vettore_indici_allDigits_biasing contains the top 100 most active units for each digit, if i divide the indexes by 100 (i.e. top_k_Hidden)
+            #then i will find for which digit the unit id was active.
+
+            if torch.any(digits_found==row) and torch.any(digits_found==col): #if the digits found present both the row and the col digits...
+                common_el_idxs_biasing = torch.hstack((common_el_idxs_biasing,id)) #add the id to the vector of ids that will be used for intersection method biasing
+                counter_biasing += 1 # i count the number of intersection elements to fill in the digit_digit_common_elements_count_biasing matrix
+
+          result_dict_biasing[str(row)+','+str(col)] = common_el_idxs_biasing #store the units in the intersection
+          digit_digit_common_elements_count_biasing[row,col] = counter_biasing
+
+      self.result_dict_biasing = result_dict_biasing 
+
+      print(digit_digit_common_elements_count_biasing)
+      #lbl_bias_freqV = digit_digit_common_elements_count_biasing.view(100)/torch.sum(digit_digit_common_elements_count_biasing.view(100))
+
+      return digit_digit_common_elements_count_biasing
     
     def generate_chimera(self,classifier, cats2intersect = [8,2], sample_nr = 1000, plot=0):
       #this function does generation from chimeras obtained with the intersection method
