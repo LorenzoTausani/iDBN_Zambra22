@@ -1,4 +1,3 @@
-import itertools
 from tqdm import tqdm #tqdm is a Python library that provides a way to create progress bars for loops and iterators, 
 #making it easier to track the progress of lengthy operations.
 import numpy as np
@@ -15,7 +14,7 @@ from methods import *
 from itertools import combinations
 from misc import save_mat_xlsx
 from data_load import Multiclass_dataset
-
+import seaborn as sns
 
 class Intersection_analysis_ZAMBRA:
     def __init__(self, model, top_k_Hidden=100, nr_steps=100):
@@ -32,7 +31,7 @@ class Intersection_analysis_ZAMBRA:
 
       #Iterate over each binary combination of categories
       intersections = {}
-      for cat1, cat2 in itertools.combinations(range(self.model.Num_classes), 2):
+      for cat1, cat2 in combinations(range(self.model.Num_classes), 2):
           #Find the intersection of the top k active indices betw the 2 cats
           intersections[f"{cat1},{cat2}"] = torch.tensor(sorted(list(set(top_k_idxs_LB[cat1].tolist()).intersection(top_k_idxs_LB[cat2].tolist()))))
       self.intersections = intersections
@@ -59,11 +58,12 @@ class Intersection_analysis_ZAMBRA:
       
       return d, df_average,df_sem, Transition_matrix_rowNorm
     
-def Chimeras_nr_visited_states_ZAMBRA(model, VGG_cl, Ian =[], topk=149, apprx=1,plot=1,compute_new=1, nr_sample_generated =100, entropy_correction=[],cl_labels=[], lS=25):
-
-    #Transition_matrix_tensor = torch.zeros((11, 11, 55), device='cuda') #NOT USED
+def Chimeras_nr_visited_states(model, classifier, Ian =[], topk=149, apprx=1,plot=1,compute_new=1,
+                                      nr_sample_generated =100,cl_labels=[], lS=25):
     c_Tmat = 0
     n_digits = model.Num_classes
+    combinations_of_two = list(combinations(range(n_digits), 2))
+    
     if Ian!=[]:
       fN='Visited_digits_k' + str(Ian.top_k_Hidden)+'.xlsx'
       fNerr='Visited_digits_error_k' + str(Ian.top_k_Hidden)+'.xlsx'
@@ -83,37 +83,23 @@ def Chimeras_nr_visited_states_ZAMBRA(model, VGG_cl, Ian =[], topk=149, apprx=1,
         Non_digit_mat  = np.zeros((n_digits, n_digits))
         Non_digit_err  = np.zeros((n_digits, n_digits))
 
-      if Ian!=[]:
-        for row in range(n_digits):
-          for col in range(row,n_digits):
-            d, df_average,df_sem, Transition_matrix_rowNorm = Ian.generate_chimera_lbl_biasing(VGG_cl,cats2intersect = [row,col], sample_nr = nr_sample_generated, temperature = 1, plot=0, entropy_correction= entropy_correction)
-            if not(row==col):
-              #Transition_matrix_tensor[:,:, c_Tmat] = Transition_matrix_rowNorm #NOT USED
-              c_Tmat = c_Tmat+1
-            Vis_states_mat[row,col]=df_average.Nr_visited_states[0]
-            Vis_states_err[row,col]=df_sem.Nr_visited_states[0]
-            if n_digits==10:
-              Non_digit_mat[row,col] = df_average['Non-digit'][0]
-              Non_digit_err[row,col] = df_sem['Non-digit'][0]
-      else:
-        numbers = list(range(n_digits))
-        combinations_of_two = list(combinations(numbers, 2))
+      for row, col in combinations_of_two:
+        if Ian!=[]:
+          d, df_average,df_sem, _ = Ian.generate_chimera_lbl_biasing(classifier,
+                                        cats2intersect = [row,col], sample_nr = nr_sample_generated,plot=0)
+        else:
+          LB2_hidden, _ = model.getH_label_biasing(on_digits=[row,col], topk=topk)
+          LB2_hidden = LB2_hidden.repeat(1,nr_sample_generated)
+          d = model.generate_from_hidden(model, LB2_hidden, nr_gen_steps=100)
+          d = Classifier_accuracy(d, classifier,model,labels=[], Batch_sz= 100, plot=0, dS=30, l_sz=3)
+          df_average,df_sem, _ = classification_metrics(d,model,Plot=0,dS=50,Ian=1)
 
-        for idx, combination in enumerate(combinations_of_two):
-          gen_hidden = label_biasing_ZAMBRA(model, on_digits=  list(combination), topk = topk)
-          gen_hidden_rep = gen_hidden.repeat(1,nr_sample_generated)
-          d = generate_from_hidden_ZAMBRA(model, gen_hidden_rep , nr_gen_steps=100)
-          d = Classifier_accuracy(d, VGG_cl,model, Thresholding_entropy=entropy_correction, labels=[], Batch_sz= 100, plot=0, dS=30, l_sz=3)
-          df_average,df_sem, Transition_matrix_rowNorm = classification_metrics(d,model,Plot=0,dS=50,Ian=1)
-          if not(combination[0]==combination[1]):
-            #Transition_matrix_tensor[:,:, c_Tmat] = Transition_matrix_rowNorm #NOT USED
-            c_Tmat = c_Tmat+1
-          Vis_states_mat[combination[0],combination[1]]=df_average.Nr_visited_states[0]
-          Vis_states_err[combination[0],combination[1]]=df_sem.Nr_visited_states[0]
-          if n_digits==10:
-            Non_digit_mat[combination[0],combination[1]] = df_average['Non-digit'][0]
-            Non_digit_err[combination[0],combination[1]] = df_sem['Non-digit'][0]
-
+        c_Tmat = c_Tmat+1
+        Vis_states_mat[row,col]=df_average.Nr_visited_states[0]
+        Vis_states_err[row,col]=df_sem.Nr_visited_states[0]
+        if n_digits==10:
+          Non_digit_mat[row,col] = df_average['Non-digit'][0]
+          Non_digit_err[row,col] = df_sem['Non-digit'][0]
 
       save_mat_xlsx(Vis_states_mat, filename=fN)
       save_mat_xlsx(Vis_states_err, filename=fNerr)
