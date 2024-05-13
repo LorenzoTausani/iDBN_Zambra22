@@ -1,7 +1,10 @@
+import numpy as np
 import math
 import random
 from matplotlib import pyplot as plt
-import numpy as np
+from matplotlib import cm
+import seaborn as sns
+import torch
 
 
 def Plot_example_generated(input_dict,num_classes = 10,row_step = 10, dS=50, lblpad = 110, custom_steps = True, Show_classification = False, not_random_idxs = True):
@@ -86,4 +89,80 @@ def Plot_example_generated(input_dict,num_classes = 10,row_step = 10, dS=50, lbl
     #plt.savefig("Reconstuct_plot.jpg") #il salvataggio è disabilitato
 
     plt.show()
+    
+    
+def StateTimePlot(Trans_nr, T_mat_labels, lS=25):
+        plt.figure(figsize=(15, 15))
+        ax = sns.heatmap(Trans_nr, linewidth=0.5, annot=True, annot_kws={"size": lS}, 
+                        square=True, cbar_kws={"shrink": .82},fmt='.1f', cmap='jet')
+        if T_mat_labels==[]:
+            T_mat_labels = [str(i) for i in range(len(Trans_nr))]
+            ax.set_yticklabels(T_mat_labels)
+            if len(Trans_nr) == 10:
+                T_mat_labels.append('Non\ndigit')
+        ax.set_xticklabels(T_mat_labels)
+        ax.tick_params(axis='both', labelsize=lS)
+
+        plt.xlabel('Class', fontsize = 25) # x-axis label with fontsize 15
+        plt.ylabel('Biasing Class', fontsize = 25) # y-axis label with fontsize 15
+        cbar = ax.collections[0].colorbar
+        cbar.ax.tick_params(labelsize=lS)
+        plt.show()
+
+
+def Transition_mat_plot(Transition_matrix_rowNorm,T_mat_labels=[], lS=25):
+    plt.figure(figsize=(15, 15))
+    Transition_matrix=Transition_matrix_rowNorm*100
+    ax = sns.heatmap(torch.round(Transition_matrix.cpu(), decimals=2), linewidth=0.5, 
+                    annot=True, annot_kws={"size": lS},square=True,
+                    cbar_kws={"shrink": .82}, fmt='.1f', cmap='jet')
+    plt.xlabel('To', fontsize = 25) # x-axis label with fontsize 15
+    plt.ylabel('From', fontsize = 25) # y-axis label with fontsize 15
+    if T_mat_labels==[]:
+        T_mat_labels = [str(i) for i in range(len(Transition_matrix_rowNorm)-1)]
+        if len(Transition_matrix_rowNorm) == 11:
+            T_mat_labels.append('Non\ndigit')
+    ax.set_xticklabels(T_mat_labels)
+    ax.set_yticklabels(T_mat_labels)
+    ax.tick_params(axis='both', labelsize=lS)
+    cbar = ax.collections[0].colorbar
+    cbar.ax.tick_params(labelsize=lS)
+    plt.show()
+    
+def Cl_plot(axis,x,y,y_err=[],x_lab='Generation step',y_lab='Accuracy', lim_y = [0,1],
+            Title = 'Classifier accuracy',l_sz=3, dS=30, color='g'):
+    y=y.cpu()
+
+    axis.plot(x, y, c = color, linewidth=l_sz)
+    if y_err != []:
+        y_err = y_err.cpu()
+        axis.fill_between(x,y-y_err, y+y_err, color=color,
+                alpha=0.3)
+    axis.tick_params(axis='x', labelsize= dS)
+    axis.tick_params(axis='y', labelsize= dS)
+    axis.set_ylabel(y_lab,fontsize=dS)
+    axis.set_ylim(lim_y)
+    axis.set_xlabel(x_lab,fontsize=dS)
+    axis.set_title(Title,fontsize=dS)
+
+def Cl_plot_classwise(axis,cl_lbls,x,classwise_y,classwise_y_err=[], Num_classes=10,
+            x_lab='Generation step',y_lab='Accuracy', lim_y = [0,1],Title = 'Classifier accuracy - classwise',
+            l_sz=3, dS= 30, cmap=cm.get_cmap('hsv')):
+    c=0
+    for digit in range(Num_classes):
+        Color = cmap(c/256) 
+        MEAN = classwise_y[digit,:].cpu()
+        axis.plot(x, MEAN, c = Color, linewidth=l_sz)
+        if classwise_y_err!=[]:
+            SEM = classwise_y_err[digit,:].cpu()
+            axis.fill_between(x,MEAN-SEM, MEAN+SEM, color=Color,
+                    alpha=0.3)
+        c = c+25
+    axis.legend(cl_lbls, bbox_to_anchor=(1.04,1), loc="upper left", fontsize=dS) #cambia posizione
+    axis.tick_params(axis='x', labelsize= dS)
+    axis.tick_params(axis='y', labelsize= dS)
+    axis.set_ylabel(y_lab,fontsize=dS)
+    axis.set_ylim(lim_y)
+    axis.set_xlabel(x_lab,fontsize=dS)
+    #axis.set_title(Title,fontsize=dS)
 

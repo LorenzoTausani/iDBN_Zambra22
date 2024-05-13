@@ -9,7 +9,8 @@ import torch.optim as optim
 import torchvision.models as models
 import pandas as pd
 import numpy as np
-import seaborn as sns
+
+from plots import Cl_plot, Cl_plot_classwise, StateTimePlot, Transition_mat_plot
 
 class VGGBlock(nn.Module):
     def __init__(self, in_channels, out_channels,batch_norm=False):
@@ -268,35 +269,26 @@ def classification_metrics(dict_classifier,model,test_labels=[], Plot=1, dS = 30
   model = the DBN model
   test_labels = groundtruth labels
   '''
-  if model.Num_classes==10: #MNIST
-    nr_states = model.Num_classes+1 #+1 because we consider also the NON DIGIT class
-  else:
-    nr_states = model.Num_classes
-
-  Cl_pred_matrix=dict_classifier['Cl_pred_matrix'] #classes predicted by the classifier (nr examples x nr generation steps)
+  #+1 is for MNIST, because we consider also the NON DIGIT class
+  nr_states = model.Num_classes + 1 if model.Num_classes == 10 else model.Num_classes
+  #classes predicted by the classifier (nr examples x nr generation steps)
+  Cl_pred_matrix=dict_classifier['Cl_pred_matrix'] 
   nr_ex=dict_classifier['Cl_pred_matrix'].size()[0] #number of examples
-  Transition_matrix = torch.zeros((nr_states,nr_states)) #Transition matrix initialization
+  #Transition matrix initialization
+  Transition_matrix = torch.zeros((nr_states,nr_states)) 
 
   for row in Cl_pred_matrix: #for every example classifications
     for nr_genStep in range(1,len(row)): #for each generation step
       Transition_matrix[row[nr_genStep-1].long(),row[nr_genStep].long()] += 1 #add +1 to the entry of the Transition matrix
-      #corresponding to the row of the digit of the previous generation step [nr_genStep-1], and the column corresponding to the digit of the 
-      #current digit [nr_genStep]
+      #corresponding to the row of the digit of the previous generation step [nr_genStep-1], 
+      #and the column corresponding to the digit of the  current digit [nr_genStep]
       #IN OTHER WORDS, THE TRANSITION MATRIX IS ESTIMATED FROM ALL THE TRANSITIONS IN THE GENERATED DATASET
+  #normalize each row of the transition matrix by its sum
+  Transition_matrix_rowNorm = torch.div(Transition_matrix, torch.sum(Transition_matrix, dim=1, keepdim=True))
 
-  Transition_matrix_rowNorm = Transition_matrix 
-
-  for i in range(nr_states): #for every row of the transition matrix...
-    Transition_matrix_rowNorm[i,:] = torch.div(Transition_matrix[i,:],torch.sum(Transition_matrix,1)[i]) #divide each entry by the sum of the entire row (torch.sum(Transition_matrix,1)[i])
-
-  #i create the list of categories of transitions to a certain digit
-  to_list = [] #this is a string list containing all states (included non digit). They will be the columns of the output dataframes
-  for digit in range(nr_states):
-    if  digit < model.Num_classes:
-      to_list.append(str(digit))
-    else:
-      to_list.append('Non-digit')
-
+  # Create the list of categories of transitions to a certain digit
+  #this is a string list containing all states (included non digit). They will be the columns of the output dataframes
+  to_list = [str(digit) if digit < model.Num_classes else 'Non-digit' for digit in range(nr_states)]
 
   columns = ['Nr_visited_states','Nr_transitions'] + to_list #the columns of the dataframes created below
   #i create two dataframes: one for the means, the other for its relative errors (SEM)
@@ -321,13 +313,14 @@ def classification_metrics(dict_classifier,model,test_labels=[], Plot=1, dS = 30
     
     for nr_ex,example in enumerate(Vis_digit): # example=tensor of the reconstructions category guessed by the classifier in a single example (i.e. row-wise)
       no10_example = example[example!=10] #here are all generations different from nondigit
-      visited_states = torch.unique(no10_example) # find all the states (digits) visited by the RBM (NOTE:I DO NOT COUNT 10(non-digit) HERE)
-      nr_visited_states = len(visited_states)
-      transitions,counts = torch.unique_consecutive(no10_example, return_counts=True) #transitions are the states sequentially explored during the generation
+      # find all the states (digits) visited by the RBM (NOTE:I DO NOT COUNT 10(non-digit) HERE)
+      nr_visited_states = len(torch.unique(no10_example))
+      #transitions are the states sequentially explored during the generation
+      transitions,counts = torch.unique_consecutive(no10_example, return_counts=True) 
       nr_transitions = len(transitions)
       to_digits = torch.zeros(nr_states) 
-
-      transitions,counts = torch.unique_consecutive(example,return_counts=True) #now i include 10(non-digit) in the transition count
+      #now i include 10(non-digit) in the transition count
+      transitions,counts = torch.unique_consecutive(example,return_counts=True) 
       visited_states = torch.unique(example) #and in the nr of visited states
       # below, for all states visited, i get the nr of steps in which the state was explored
       for state in visited_states:
@@ -411,76 +404,8 @@ def classification_metrics(dict_classifier,model,test_labels=[], Plot=1, dS = 30
           plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05),
                     fancybox=True, shadow=True, ncol=4, fontsize=dS)
           
-           
 
   return df_average, df_sem, Transition_matrix_rowNorm
 
-def StateTimePlot(Trans_nr, T_mat_labels, lS=25):
-        plt.figure(figsize=(15, 15))
-        ax = sns.heatmap(Trans_nr, linewidth=0.5, annot=True, annot_kws={"size": lS}, square=True, cbar_kws={"shrink": .82},fmt='.1f', cmap='jet')
-        if T_mat_labels==[]:
-           T_mat_labels = [str(i) for i in range(len(Trans_nr))]
-           ax.set_yticklabels(T_mat_labels)
-           if len(Trans_nr) == 10:
-              T_mat_labels.append('Non\ndigit')
-        ax.set_xticklabels(T_mat_labels)
-        ax.tick_params(axis='both', labelsize=lS)
 
-        plt.xlabel('Class', fontsize = 25) # x-axis label with fontsize 15
-        plt.ylabel('Biasing Class', fontsize = 25) # y-axis label with fontsize 15
-        cbar = ax.collections[0].colorbar
-        cbar.ax.tick_params(labelsize=lS)
-        plt.show()
-
-
-def Transition_mat_plot(Transition_matrix_rowNorm,T_mat_labels=[], lS=25):
-      plt.figure(figsize=(15, 15))
-      Transition_matrix=Transition_matrix_rowNorm*100
-      ax = sns.heatmap(torch.round(Transition_matrix.cpu(), decimals=2), linewidth=0.5, annot=True, annot_kws={"size": lS},square=True,cbar_kws={"shrink": .82}, fmt='.1f', cmap='jet')
-      plt.xlabel('To', fontsize = 25) # x-axis label with fontsize 15
-      plt.ylabel('From', fontsize = 25) # y-axis label with fontsize 15
-      if T_mat_labels==[]:
-          T_mat_labels = [str(i) for i in range(len(Transition_matrix_rowNorm)-1)]
-          if len(Transition_matrix_rowNorm) == 11:
-            T_mat_labels.append('Non\ndigit')
-      ax.set_xticklabels(T_mat_labels)
-      ax.set_yticklabels(T_mat_labels)
-      ax.tick_params(axis='both', labelsize=lS)
-      cbar = ax.collections[0].colorbar
-      cbar.ax.tick_params(labelsize=lS)
-
-      plt.show()
-def Cl_plot(axis,x,y,y_err=[],x_lab='Generation step',y_lab='Accuracy', lim_y = [0,1],Title = 'Classifier accuracy',l_sz=3, dS=30, color='g'):
-  y=y.cpu()
-  
-  axis.plot(x, y, c = color, linewidth=l_sz)
-  if y_err != []:
-    y_err = y_err.cpu()
-    axis.fill_between(x,y-y_err, y+y_err, color=color,
-                alpha=0.3)
-  axis.tick_params(axis='x', labelsize= dS)
-  axis.tick_params(axis='y', labelsize= dS)
-  axis.set_ylabel(y_lab,fontsize=dS)
-  axis.set_ylim(lim_y)
-  axis.set_xlabel(x_lab,fontsize=dS)
-  axis.set_title(Title,fontsize=dS)
-
-def Cl_plot_classwise(axis,cl_lbls,x,classwise_y,classwise_y_err=[], Num_classes=10,x_lab='Generation step',y_lab='Accuracy', lim_y = [0,1],Title = 'Classifier accuracy - classwise',l_sz=3, dS= 30, cmap=cm.get_cmap('hsv')):
-  c=0
-  for digit in range(Num_classes):
-    Color = cmap(c/256) 
-    MEAN = classwise_y[digit,:].cpu()
-    axis.plot(x, MEAN, c = Color, linewidth=l_sz)
-    if classwise_y_err!=[]:
-      SEM = classwise_y_err[digit,:].cpu()
-      axis.fill_between(x,MEAN-SEM, MEAN+SEM, color=Color,
-              alpha=0.3)
-    c = c+25
-  axis.legend(cl_lbls, bbox_to_anchor=(1.04,1), loc="upper left", fontsize=dS) #cambia posizione
-  axis.tick_params(axis='x', labelsize= dS)
-  axis.tick_params(axis='y', labelsize= dS)
-  axis.set_ylabel(y_lab,fontsize=dS)
-  axis.set_ylim(lim_y)
-  axis.set_xlabel(x_lab,fontsize=dS)
-  #axis.set_title(Title,fontsize=dS)
 
