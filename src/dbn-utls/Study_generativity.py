@@ -13,81 +13,7 @@ from Classifiers import *
 from methods import *
 from itertools import combinations
 from misc import save_mat_xlsx
-
-def generate_from_hidden_ZAMBRA(dbn, input_hid_prob, nr_gen_steps=1):
-    #input_hid_prob has size Nr_hidden_units x num_cases. Therefore i transpose it
-    input_hid_prob = torch.transpose(input_hid_prob,0,1)
-
-    numcases = input_hid_prob.size()[0] #numbers of samples to generate
-    hidden_layer_size = input_hid_prob.size()[1]
-    vis_layerSize = dbn.rbm_layers[0].Nin
-    # Initialize tensors to store hidden and visible probabilities and states
-    # hid prob/states : nr layers x numbers of samples to generate x size of the hidden layer x number of generation steps
-    # vis prob/states : numbers of samples to generate x size of the visible layer x number of generation steps
-    hid_prob = torch.zeros(len(dbn.rbm_layers),numcases,hidden_layer_size, nr_gen_steps, device=dbn.DEVICE)
-    hid_states = torch.zeros(len(dbn.rbm_layers), numcases,hidden_layer_size, nr_gen_steps, device=dbn.DEVICE)
-    vis_prob = torch.zeros(numcases, vis_layerSize, nr_gen_steps, device=dbn.DEVICE)
-    vis_states = torch.zeros(numcases ,vis_layerSize, nr_gen_steps, device=dbn.DEVICE)
-
-
-    for gen_step in range(0, nr_gen_steps): #for each generation step...
-      if gen_step==0: #if it is the 1st step of generation...
-        hid_prob[2,:,:,gen_step]  = input_hid_prob #the hidden probability is the one in the input
-        hid_states[2,:,:,gen_step]  = input_hid_prob
-        c=1 # counter of layer depth
-        for rbm in reversed(dbn.rbm_layers): #The reversed() function is used to reverse the order of elements in an iterable (e.g., a list )
-            if c==1: #if it is the upper layer...
-              p_v, v = rbm.backward(input_hid_prob) #compute the activity of the layer below using the biasing vector
-              layer_size = v.shape[1]
-              #i store the hid prob and state of the layer below
-              hid_prob[2-c,:,:layer_size,gen_step]  = p_v
-              hid_states[2-c,:,:layer_size,gen_step]  = v
-
-            else:#if the layer selected is below the upper layer
-              if c<len(dbn.rbm_layers): #if the layer selected is not the one above the visible layer (i.e. below there is another hidden layer)
-                p_v, v = rbm.backward(v)
-                layer_size = v.shape[1]
-                #i store the hid prob and state of the layer below
-                hid_prob[2-c,:,:layer_size,gen_step]  = p_v 
-                hid_states[2-c,:,:layer_size,gen_step]  = v
-              else: #if the layer below is the visible later
-                v, p_v = rbm.backward(v) #passo la probabilità (che in questo caso è v) dopo
-                layer_size = v.shape[1]
-                #i store the visible state and probabilities
-                vis_prob[:,:,gen_step]  = v 
-                vis_states[:,:,gen_step]  = v
-            c=c+1#for each layer i iterate, i update the counter
-      else: #after the 1st gen step
-            #from the visible state obtained in the previous activation, compute the activation of the upper layer
-            for rbm in dbn.rbm_layers:
-              p_v, v = rbm(v)
-            #i store the probability and state of the upper layer
-            hid_prob[2,:,:,gen_step]  = p_v 
-            hid_states[2,:,:,gen_step]  = v
-            #and i do the same as in the first step(code below)
-            c=1
-            for rbm in reversed(dbn.rbm_layers):
-
-              if c<len(dbn.rbm_layers):
-                p_v, v = rbm.backward(v)
-                layer_size = v.shape[1]
-                hid_prob[2-c,:,:layer_size,gen_step]  = p_v #the hidden probability is the one in the input
-                hid_states[2-c,:,:layer_size,gen_step]  = v
-              else:
-                v, p_v = rbm.backward(v)
-                layer_size = v.shape[1]
-                vis_prob[:,:,gen_step]  = v #the hidden probability is the one in the input
-                vis_states[:,:,gen_step]  = v
-              c=c+1
-              
-    #the result dict will contain the output of the whole generation process
-    result_dict = dict(); 
-    result_dict['hid_states'] = hid_states
-    result_dict['vis_states'] = vis_states
-    result_dict['hid_prob'] = hid_prob
-    result_dict['vis_prob'] = vis_prob
-
-    return result_dict
+from data_load import Multiclass_dataset
 
 
 class Intersection_analysis_ZAMBRA:
@@ -95,27 +21,23 @@ class Intersection_analysis_ZAMBRA:
         self.model = model #the DBN model
         self.top_k_Hidden = top_k_Hidden #nr of hidden units with highest activity, which will then be binarized to 1
         self.nr_steps = nr_steps #nr steps of generation
+        #label biasing for the intersection method
+        LB_hidden, LB_labels = self.model.label_biasing(topk=-1,n_reps = 1)
+        self.LB_hidden = LB_hidden; self.LB_labels = LB_labels
         
     def do_intersection_analysis(self):
-      #for the intersection method
-      for dig in range(self.model.Num_classes): #for each class...
-        g_H = label_biasing_ZAMBRA(self.model, on_digits=dig, topk = -1) #...do label biasing activating just that digit
-        if dig == 0:
-            hid_bias = g_H
-        else:
-            hid_bias = torch.hstack((hid_bias,g_H)) #stack together the label biasing vector for each digit
-
       vettore_indici_allDigits_biasing = torch.empty((0),device= self.model.DEVICE)
 
       for digit in range(self.model.Num_classes): #for each digit
-        hid_vec_B = hid_bias[:,digit] #get the hidden state obtained by label biasing with the specific class 'digit'
+        hid_vec_B = self.LB_hidden[:,digit] #get the hidden state obtained by label biasing with the specific class 'digit'
         #in the next two lines i find the top p indexes in terms of activation
-        top_values_biasing, top_idxs_biasing = torch.topk(hid_vec_B, self.top_k_Hidden) 
-        vettore_indici_allDigits_biasing = torch.cat((vettore_indici_allDigits_biasing,top_idxs_biasing),0) #I concatenate the top p indexes for all digits in this vector
-
-      unique_idxs_biasing,count_unique_idxs_biasing = torch.unique(vettore_indici_allDigits_biasing,return_counts=True) # Of the indexes found i take just the ones that are not repeated      
-
-      digit_digit_common_elements_count_biasing = torch.zeros((self.model.Num_classes,self.model.Num_classes)) #in here i will count the number of common elements in each intersection
+        _, top_idxs_biasing = torch.topk(hid_vec_B, self.top_k_Hidden) 
+        #I concatenate the top p indexes for all digits in this vector
+        vettore_indici_allDigits_biasing = torch.cat((vettore_indici_allDigits_biasing,top_idxs_biasing),0) 
+      # Of the indexes found i take just the ones that are not repeated  
+      unique_idxs_biasing,_ = torch.unique(vettore_indici_allDigits_biasing,return_counts=True)     
+      #in here i will count the number of common elements in each intersection
+      digit_digit_common_elements_count_biasing = torch.zeros((self.model.Num_classes,self.model.Num_classes)) 
       self.unique_H_idxs_biasing = unique_idxs_biasing
 
       result_dict_biasing ={} #here i will store, for each combination of classes (keys), the units in intersection between them
