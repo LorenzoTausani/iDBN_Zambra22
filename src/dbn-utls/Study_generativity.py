@@ -16,7 +16,7 @@ from misc import save_mat_xlsx
 from data_load import Multiclass_dataset
 import seaborn as sns
 
-class Intersection_analysis_ZAMBRA:
+class Intersection_analysis:
     def __init__(self, model, top_k_Hidden=100, nr_steps=100):
         self.model = model #the DBN model
         self.top_k_Hidden = top_k_Hidden #nr of hidden units with highest activity, which will then be binarized to 1
@@ -85,8 +85,8 @@ def Chimeras_nr_visited_states(model, classifier, Ian =[], topk=149, apprx=1,plo
 
       for row, col in combinations_of_two:
         if Ian!=[]: #intersection method
-          d, df_average,df_sem, _ = Ian.generate_chimera_lbl_biasing(classifier,
-                                        cats2intersect = [row,col], sample_nr = nr_sample_generated,plot=0)
+          d, df_average,df_sem, _ = Ian.generate_chimera(classifier,cats2intersect = [row,col],
+                                        sample_nr = nr_sample_generated,plot=0)
         else: #double label biasing
           LB2_hidden = model.getH_label_biasing(on_digits=[row,col], topk=topk)
           LB2_hidden = LB2_hidden.repeat(1,nr_sample_generated)
