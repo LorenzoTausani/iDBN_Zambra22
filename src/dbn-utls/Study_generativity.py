@@ -1,3 +1,4 @@
+import itertools
 from tqdm import tqdm #tqdm is a Python library that provides a way to create progress bars for loops and iterators, 
 #making it easier to track the progress of lengthy operations.
 import numpy as np
@@ -26,16 +27,24 @@ class Intersection_analysis_ZAMBRA:
         self.LB_hidden = LB_hidden; self.LB_labels = LB_labels
         
     def do_intersection_analysis(self):
-      vettore_indici_allDigits_biasing = torch.empty((0),device= self.model.DEVICE)
+      #Find top k active indices for each category
+      top_k_idxs_LB = {i: torch.topk(self.LB_hidden[:, i], self.top_k_Hidden)[1] for i in range(self.model.Num_classes)}
 
-      for digit in range(self.model.Num_classes): #for each digit
-        hid_vec_B = self.LB_hidden[:,digit] #get the hidden state obtained by label biasing with the specific class 'digit'
-        #in the next two lines i find the top p indexes in terms of activation
-        _, top_idxs_biasing = torch.topk(hid_vec_B, self.top_k_Hidden) 
-        #I concatenate the top p indexes for all digits in this vector
-        vettore_indici_allDigits_biasing = torch.cat((vettore_indici_allDigits_biasing,top_idxs_biasing),0) 
+      #Iterate over each binary combination of categories
+      intersections = {}
+      for cat1, cat2 in itertools.combinations(range(self.model.Num_classes), 2):
+          #Find the intersection of the top k active indices betw the 2 cats
+          intersections[f"{cat1},{cat2}"] = torch.tensor(list(set(top_k_idxs_LB[cat1].tolist()).intersection(top_k_idxs_LB[cat2].tolist())))
+      self.intersections = intersections
+      
+    def do_intersection_analysis_old(self):
+      #for each class get the hidden state obtained by label biasing with that specific class.
+      #find the top k indexes in terms of activation, and concatenate them in a single vector
+      idxs_all_LB_topk = torch.cat([torch.topk(self.LB_hidden[:, digit], self.top_k_Hidden)[1] 
+                                                    for digit in range(self.model.Num_classes)], 0).to(self.model.DEVICE)
+      
       # Of the indexes found i take just the ones that are not repeated  
-      unique_idxs_biasing,_ = torch.unique(vettore_indici_allDigits_biasing,return_counts=True)     
+      unique_idxs_biasing,_ = torch.unique(idxs_all_LB_topk,return_counts=True)     
       #in here i will count the number of common elements in each intersection
       digit_digit_common_elements_count_biasing = torch.zeros((self.model.Num_classes,self.model.Num_classes)) 
       self.unique_H_idxs_biasing = unique_idxs_biasing
@@ -50,9 +59,9 @@ class Intersection_analysis_ZAMBRA:
 
           counter_biasing = 0
           for id in unique_idxs_biasing: #for each of the top indices
-            digits_found = torch.floor(torch.nonzero(vettore_indici_allDigits_biasing==id)/self.top_k_Hidden)
-            #torch.nonzero(vettore_indici_allDigits_biasing==id) finds the positions in the array vettore_indici_allDigits_biasing  where there is the value id is present
-            #indeed, given that the vector vettore_indici_allDigits_biasing contains the top 100 most active units for each digit, if i divide the indexes by 100 (i.e. top_k_Hidden)
+            digits_found = torch.floor(torch.nonzero(idxs_all_LB_topk==id)/self.top_k_Hidden)
+            #torch.nonzero(idxs_all_LB_topk==id) finds the positions in the array idxs_all_LB_topk  where there is the value id is present
+            #indeed, given that the vector idxs_all_LB_topk contains the top 100 most active units for each digit, if i divide the indexes by 100 (i.e. top_k_Hidden)
             #then i will find for which digit the unit id was active.
 
             if torch.any(digits_found==row) and torch.any(digits_found==col): #if the digits found present both the row and the col digits...
