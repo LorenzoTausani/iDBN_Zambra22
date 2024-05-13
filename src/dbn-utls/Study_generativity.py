@@ -84,13 +84,13 @@ def Chimeras_nr_visited_states(model, classifier, Ian =[], topk=149, apprx=1,plo
         Non_digit_err  = np.zeros((n_digits, n_digits))
 
       for row, col in combinations_of_two:
-        if Ian!=[]:
+        if Ian!=[]: #intersection method
           d, df_average,df_sem, _ = Ian.generate_chimera_lbl_biasing(classifier,
                                         cats2intersect = [row,col], sample_nr = nr_sample_generated,plot=0)
-        else:
+        else: #double label biasing
           LB2_hidden = model.getH_label_biasing(on_digits=[row,col], topk=topk)
           LB2_hidden = LB2_hidden.repeat(1,nr_sample_generated)
-          d = model.generate_from_hidden(model, LB2_hidden, nr_gen_steps=100)
+          d = model.generate_from_hidden(LB2_hidden, nr_gen_steps=100)
           d = Classifier_accuracy(d, classifier,model,labels=[], Batch_sz= 100, plot=0, dS=30, l_sz=3)
           df_average,df_sem, _ = classification_metrics(d,model,Plot=0,dS=50,Ian=1)
 
