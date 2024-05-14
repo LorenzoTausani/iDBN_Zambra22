@@ -63,6 +63,17 @@ def relabel_09(data, old_labels):
     image, label = data
     return image, old_labels.index(label)
 
+def get_relative_freq(valore, hist, bin_edges,numero_bin=20):
+    # Trova il bin in cui si trova il valore
+    indice_bin = np.digitize(valore, bin_edges)
+
+    # Controlla se l'indice è fuori dai limiti
+    if 1 <= indice_bin <= numero_bin:
+        frequenza_relativa = hist[indice_bin - 1]
+        return frequenza_relativa
+    else:
+        return 0.0  # Il valore è al di fuori dei bin
+
 def raddrizza_lettere(data_train_retraining_ds,data_test_retraining_ds):
     #questi loop sono per raddrizzare le lettere
     data_train_retraining_L = []

@@ -7,7 +7,8 @@ import os
 import json
 from sklearn.metrics import accuracy_score
 from data_load import data_and_labels, load_NPZ_dataset
-from misc import relabel_09
+from misc import get_relative_freq, relabel_09
+from plots import hist_pixel_act
 import Study_generativity
 from Study_generativity import *
 from matplotlib.ticker import StrMethodFormatter
@@ -76,18 +77,6 @@ def readout_V_to_Hlast(dbn,train_dataset,test_dataset, DEVICE='cuda', existing_c
       
   return readout_acc_V, classifier_list
 
-
-def get_relative_freq(valore, hist, bin_edges,numero_bin=20):
-    # Trova il bin in cui si trova il valore
-    indice_bin = np.digitize(valore, bin_edges)
-
-    # Controlla se l'indice è fuori dai limiti
-    if 1 <= indice_bin <= numero_bin:
-        frequenza_relativa = hist[indice_bin - 1]
-        return frequenza_relativa
-    else:
-        return 0.0  # Il valore è al di fuori dei bin
-
 def sampling_gen_examples(results, prob_distr, cumulative_sum,desired_len_array = 9984):
   random_numbers = np.random.rand(desired_len_array*10)
   index_selected_samples = []
@@ -113,51 +102,34 @@ def random_selection_withinBatch(batch_size=128):
   all_indices = list(range(batch_size))
   # Estrai 64 indici casuali dalla lista
   random.shuffle(all_indices)
-  selected_indices = all_indices[:batch_size//2]
+  selected_indices = all_indices[:batch_size//2] 
   # Gli altri 64 indici sono quelli rimanenti
   remaining_indices = all_indices[batch_size//2:]
   return selected_indices, remaining_indices
 
-def mixing_data_wihin_batch(half_MNIST,half_retraining_ds):
-  batch_size = half_MNIST.shape[1] 
-  nr_batches = half_MNIST.shape[0]
-  mix_retraining_ds_MNIST = torch.zeros((nr_batches*2,batch_size,half_MNIST.shape[2]))
+def mixing_data_within_batch(half_MNIST,half_retraining_ds):
+  nr_batches, batch_size, imgvec_len = half_MNIST.shape
+  mix_retraining_ds_MNIST = torch.zeros((nr_batches*2,batch_size,imgvec_len))
+  #the random selection of batch index is separated for the half MNIST and the half retraining datasets
+  rand_select_MNIST = list(range(nr_batches)); random.shuffle(rand_select_MNIST)
+  rand_select_retrainDS = list(range(nr_batches)); random.shuffle(rand_select_retrainDS)
 
-  randomly_selected_batches_MNIST = list(range(nr_batches))
-  random.shuffle(randomly_selected_batches_MNIST)
-
-  randomly_selected_batches_retrainDS = list(range(nr_batches))
-  random.shuffle(randomly_selected_batches_retrainDS)
-
-  #print([randomly_selected_batches_MNIST[i]== randomly_selected_batches_retrainDS[i] for i in range(len(randomly_selected_batches_retrainDS))])
-
-  for idx in range(nr_batches):
-
-      selected_indices_MNIST, remaining_indices_MNIST = random_selection_withinBatch(batch_size)
+  for idx in range(nr_batches): #for every random batch index
+      #the random selection is separated also for indices within the batch
+      MNIST_idxs_selected, MNIST_idxs_remained = random_selection_withinBatch(batch_size)
       selected_indices_retrainDS, remaining_indices_retrainDS = random_selection_withinBatch(batch_size)
       
-      # if idx==0:
-      #   print([selected_indices_MNIST[i]== selected_indices_retrainDS[i] for i in range(len(selected_indices_retrainDS))])
-      #   print([selected_indices_MNIST[i]== remaining_indices_MNIST[i] for i in range(len(remaining_indices_MNIST))])
-
-      MNIST_examples = half_MNIST[randomly_selected_batches_MNIST[idx],selected_indices_MNIST,:]
-      retrainDS_examples = half_retraining_ds[randomly_selected_batches_retrainDS[idx],selected_indices_retrainDS,:]
-
+      MNIST_examples = half_MNIST[rand_select_MNIST[idx],MNIST_idxs_selected,:]
+      retrainDS_examples = half_retraining_ds[rand_select_retrainDS[idx],selected_indices_retrainDS,:]
       mix_batch1 = torch.cat((MNIST_examples, retrainDS_examples), dim=0)
-      permuted_indices = torch.randperm(batch_size)
       # Use the permutation to shuffle the examples of the dataset
-      mix_batch1 = mix_batch1[permuted_indices]
-      mix_retraining_ds_MNIST[idx,:,:] = mix_batch1
+      mix_retraining_ds_MNIST[idx,:,:] = mix_batch1[torch.randperm(batch_size)]
 
-
-      MNIST_examples2 = half_MNIST[randomly_selected_batches_MNIST[idx],remaining_indices_MNIST,:]
-      retrainDS_examples2 = half_retraining_ds[randomly_selected_batches_retrainDS[idx],remaining_indices_retrainDS,:]
-
+      MNIST_examples2 = half_MNIST[rand_select_MNIST[idx],MNIST_idxs_remained,:]
+      retrainDS_examples2 = half_retraining_ds[rand_select_retrainDS[idx],remaining_indices_retrainDS,:]
       mix_batch2 = torch.cat((MNIST_examples2, retrainDS_examples2), dim=0)
-      permuted_indices = torch.randperm(batch_size)
       # Use the permutation to shuffle the examples of the dataset
-      mix_batch2 = mix_batch2[permuted_indices]
-      mix_retraining_ds_MNIST[idx+(nr_batches//2),:,:] = mix_batch2
+      mix_retraining_ds_MNIST[idx+(nr_batches//2),:,:] = mix_batch2[torch.randperm(batch_size)]
 
   return mix_retraining_ds_MNIST
   
@@ -229,6 +201,7 @@ def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, d
       n_samples = math.ceil((sample_sz/2)*coeff/(len(Ian.intersections.keys())*n_steps_generation))
       _, visible_states = multiple_chimeras(Ian.model, classifier, sample_nr = n_samples, Ian = Ian, 
                   nr_gen_steps = n_steps_generation, topk = k, gather_visits = False, gather_visible = True)
+      
     # Adapt the shape of the visible states and sample the required amount
     # Vis_states : numbers of samples to generate x number of generation steps x size of the visible layer 
     Vis_states = visible_states.permute(0, 2, 1)
@@ -237,57 +210,45 @@ def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, d
     indices = torch.randperm(sample_nr)[:math.ceil(half_ds_size*coeff)]
     # Sample the rows using the generated indices
     sampled_data = Vis_states[indices]    
-    
+    #TODO: GUARDARE E MIGLIORARE LA SELECTION SESSSION
     if selection_gen == True and half_isgen==True:
-        avg_activity_sampled_data =  torch.mean(sampled_data,axis = 1)
-        hist, bin_edges = np.histogram(avg_pixels_active_TrainMNIST, bins=20, density=True)
-        sum_hist = np.sum(hist)
-        prob_distr = hist/sum_hist
-        cumulative_sum = np.cumsum(prob_distr)
+      avg_activity_sampled_data =  torch.mean(sampled_data,axis = 1)
+      hist, bin_edges = np.histogram(avg_pixels_active_TrainMNIST, bins=20, density=True)
+      sum_hist = np.sum(hist)
+      prob_distr = hist/sum_hist
+      cumulative_sum = np.cumsum(prob_distr)
 
-        results = torch.zeros_like(avg_activity_sampled_data)
+      results = torch.zeros_like(avg_activity_sampled_data)
 
-        for i in range(avg_activity_sampled_data.size(0)):
-            value = avg_activity_sampled_data[i].item()
-            results[i] = get_relative_freq(value, hist, bin_edges)
-            if correction_type == 'sampling':
-               results[i] = results[i]/sum_hist
-        if correction_type == 'frequency':
-          top_indices = torch.topk(results, k=half_ds_size).indices
-        elif correction_type == 'sampling':
-          top_indices = torch.tensor(sampling_gen_examples(results, prob_distr, cumulative_sum,desired_len_array = half_ds_size + 1000)) #200 è per evitare di andare sotto 9984
-          top_indices = top_indices[:half_ds_size]
-          number_of_unique_elements = len(torch.unique(top_indices))
-          # Print in bold
-          print(f"\033[1mNumber of unique elements: {number_of_unique_elements}\033[0m")
-        else:
-          top_indices = torch.tensor(np.where(results.cpu() != 0)[0])
-          random_indices = torch.randperm(top_indices.size(0))
-          top_indices = top_indices[random_indices[:half_ds_size]]
+      for i in range(avg_activity_sampled_data.size(0)):
+          value = avg_activity_sampled_data[i].item()
+          results[i] = get_relative_freq(value, hist, bin_edges)
+          results[i] = results[i] / sum_hist if correction_type == 'sampling' else results[i]
 
-        sampled_data = sampled_data[top_indices]
-        avg_activity_sampled_data_topK =  torch.mean(sampled_data,axis = 1)
-        plt.figure()
-        plt.hist(avg_pixels_active_TrainMNIST.cpu(), bins=20, color='blue', alpha=0.7,density=True, label='MNIST train set')  # You can adjust the number of bins as needed
-        plt.hist(avg_activity_sampled_data.cpu(), bins=20, color='red', alpha=0.7,density=True, label='Generated data - no correction')
-        plt.hist(avg_activity_sampled_data_topK.cpu(), bins=20, color='orange', alpha=0.7,density=True, label='Generated data - corrected')
-        # Add labels and a title
-        plt.xlabel('Average pixel activation')
-        plt.ylabel('Relative frequency (%)')
-        plt.legend()
-        plt.show()
+      if correction_type == 'frequency':
+        top_indices = torch.topk(results, k=half_ds_size).indices
+      elif correction_type == 'sampling':
+        top_indices = torch.tensor(sampling_gen_examples(results, prob_distr, cumulative_sum,desired_len_array = half_ds_size + 1000)) #200 è per evitare di andare sotto 9984
+        top_indices = top_indices[:half_ds_size]
+        number_of_unique_elements = len(torch.unique(top_indices))
+        # Print in bold
+        print(f"\033[1mNumber of unique elements: {number_of_unique_elements}\033[0m")
+      else:
+        top_indices = torch.tensor(np.where(results.cpu() != 0)[0])
+        random_indices = torch.randperm(top_indices.size(0))
+        top_indices = top_indices[random_indices[:half_ds_size]]
+
+      sampled_data = sampled_data[top_indices]
+      avg_activity_sampled_data_topK =  torch.mean(sampled_data,axis = 1)
+      hist_pixel_act(avg_pixels_active_TrainMNIST,avg_activity_sampled_data,avg_activity_sampled_data_topK, n_bins = 20)
 
     half_MNIST = sampled_data.view(half_batches, batch_sz, 784)
 
   half_retraining_ds = train_dataset_retraining_ds['data'][:half_batches,:,:].to('cuda')
-  
   #mix_retraining_ds_MNIST = torch.cat((half_MNIST, half_retraining_ds), dim=0)
-  mix_retraining_ds_MNIST=mixing_data_wihin_batch(half_MNIST,half_retraining_ds)
-
-  # Generate a random permutation of indices
-  permuted_indices = torch.randperm(nr_batches_retraining)
+  mix_retraining_ds_MNIST=mixing_data_within_batch(half_MNIST,half_retraining_ds)
   # Use the permutation to shuffle the examples of the dataset
-  mix_retraining_ds_MNIST = mix_retraining_ds_MNIST[permuted_indices]
+  mix_retraining_ds_MNIST = mix_retraining_ds_MNIST[torch.randperm(nr_batches_retraining)]
   try:
     # Prova ad accedere alla variabile 'my_variable'.
     print(test_dataset_retraining_ds)

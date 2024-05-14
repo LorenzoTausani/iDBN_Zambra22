@@ -165,4 +165,15 @@ def Cl_plot_classwise(axis,cl_lbls,x,classwise_y,classwise_y_err=[], Num_classes
     axis.set_ylim(lim_y)
     axis.set_xlabel(x_lab,fontsize=dS)
     #axis.set_title(Title,fontsize=dS)
+    
+def hist_pixel_act(avg_pixels_active_TrainMNIST,avg_activity_sampled_data,avg_activity_sampled_data_topK, n_bins = 20):
+    plt.figure()
+    plt.hist(avg_pixels_active_TrainMNIST.cpu(), bins=n_bins, color='blue', alpha=0.7,density=True, label='MNIST train set')  # You can adjust the number of bins as needed
+    plt.hist(avg_activity_sampled_data.cpu(), bins=n_bins, color='red', alpha=0.7,density=True, label='Generated data - no correction')
+    plt.hist(avg_activity_sampled_data_topK.cpu(), bins=n_bins, color='orange', alpha=0.7,density=True, label='Generated data - corrected')
+    # Add labels and a title
+    plt.xlabel('Average pixel activation')
+    plt.ylabel('Relative frequency (%)')
+    plt.legend()
+    plt.show()
 
