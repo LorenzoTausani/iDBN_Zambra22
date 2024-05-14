@@ -219,32 +219,24 @@ def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, d
     dict_DBN_lBias_classic = dbn.generate_from_hidden(LB_hidden, nr_gen_steps=n_steps_generation)
     
     if Type_gen == 'lbl_bias':
-      Vis_states = dict_DBN_lBias_classic['vis_states'].permute(0, 2, 1)
-      Vis_states = Vis_states.reshape(Vis_states.shape[0]*Vis_states.shape[1],Vis_states.shape[2]) #Vis_states.shape[2]=784
-      indices = torch.randperm(Vis_states.size(0))[:math.ceil(half_ds_size*coeff)]
-      # Sample the rows using the generated indices
-      sampled_data = Vis_states[indices]
+      visible_states = dict_DBN_lBias_classic['vis_states']
     else:
       Mean, _ = Perc_H_act(dbn, LB_labels, gen_data_dictionary=dict_DBN_lBias_classic, 
                           layer_of_interest=2, plot = False)
       k = int((torch.mean(Mean, axis=0)[0]*dbn.top_layer_size)/100)
       Ian = Intersection_analysis(dbn, top_k_Hidden=k,nr_steps=n_steps_generation)
       Ian.do_intersection_analysis()
-      n_samples = math.ceil(10000*coeff/(45*n_steps_generation))
-      c=0
-      for row in range(10):
-        for col in range(row+1,10): #45 combinations(upper diagonal)
-          d, _,_,_ = Ian.generate_chimera_lbl_biasing(classifier,elements_of_interest = [row,col], nr_of_examples = n_samples, temperature = 1, plot=0, entropy_correction=[])
-          if c==0:
-              Chim_gen_ds = d['vis_states'][:,:,:n_steps_generation]
-          else:
-              Chim_gen_ds = torch.cat((Chim_gen_ds, d['vis_states'][:,:,:n_steps_generation]), dim=0)
-          c=c+1
-      Vis_states_chimera = Chim_gen_ds.permute(0, 2, 1)
-      Vis_states_chimera = Vis_states_chimera.reshape(Vis_states_chimera.shape[0]*Vis_states_chimera.shape[1],Vis_states_chimera.shape[2]) #Vis_states.shape[2]=784
-      indices = torch.randperm(Vis_states_chimera.size(0))[:math.ceil(half_ds_size*coeff)]
-      # Sample the rows using the generated indices
-      sampled_data = Vis_states_chimera[indices]
+      n_samples = math.ceil((sample_sz/2)*coeff/(len(Ian.intersections.keys())*n_steps_generation))
+      _, visible_states = multiple_chimeras(Ian.model, classifier, sample_nr = n_samples, Ian = Ian, 
+                  nr_gen_steps = n_steps_generation, topk = k, gather_visits = False, gather_visible = True)
+    # Adapt the shape of the visible states and sample the required amount
+    # Vis_states : numbers of samples to generate x number of generation steps x size of the visible layer 
+    Vis_states = visible_states.permute(0, 2, 1)
+    sample_nr,_, imgvec_len = Vis_states.shape
+    Vis_states = Vis_states.reshape(sample_nr*n_steps_generation,imgvec_len) #Vis_states.shape[2]=784
+    indices = torch.randperm(sample_nr)[:math.ceil(half_ds_size*coeff)]
+    # Sample the rows using the generated indices
+    sampled_data = Vis_states[indices]    
     
     if selection_gen == True and half_isgen==True:
         avg_activity_sampled_data =  torch.mean(sampled_data,axis = 1)

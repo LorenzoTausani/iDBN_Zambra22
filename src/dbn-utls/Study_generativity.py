@@ -59,75 +59,75 @@ class Intersection_analysis:
       return d, df_average,df_sem, Transition_matrix_rowNorm
 
 
-def Chimeras_nr_visited_states(model, classifier, Ian =[], topk=149, apprx=1,plot=1,compute_new=1,
-                                      nr_sample_generated =100,cl_labels=[], lS=25):
-    c_Tmat = 0
-    n_digits = model.Num_classes
-    combinations_of_two = list(combinations(range(n_digits), 2))
+def multiple_chimeras(model, classifier, sample_nr, Ian: Intersection_analysis| None = None, 
+                      nr_gen_steps = 100, topk =-1, gather_visits = False, gather_visible = False):
+  
+  n_digits = model.Num_classes
+  if Ian: Ian.nr_steps = nr_gen_steps; Ian.top_k_Hidden = topk
+  combinations_of_two = list(combinations(range(n_digits), 2))
+  
+  #initialize the outputs
+  states_stats = {'Vis_states_mat': np.zeros((n_digits, n_digits)),
+            'Vis_states_err': np.zeros((n_digits, n_digits)),
+            'Non_digit_mat': np.zeros((n_digits, n_digits)),
+            'Non_digit_err': np.zeros((n_digits, n_digits))}
+  visible_states = []
+  
+  #loop for every combination of classes
+  for row, col in combinations_of_two:
+    if Ian is not None: #intersection method
+      d, df_average,df_sem, _ = Ian.generate_chimera(classifier,cats2intersect = [row,col],
+                                    sample_nr = sample_nr,plot=0)
+    else: #double label biasing
+      LB2_hidden = model.getH_label_biasing(on_digits=[row,col], topk=topk)
+      LB2_hidden = LB2_hidden.repeat(1,sample_nr/n_digits)
+      d = model.generate_from_hidden(LB2_hidden, nr_gen_steps=nr_gen_steps)
+      d = Classifier_accuracy(d, classifier,model,labels=[], Batch_sz= 100, plot=0, dS=30, l_sz=3)
+      df_average,df_sem, _ = classification_metrics(d,model,Plot=0,dS=50,Ian=1)
+    #gather the outputs of interest  
+    if gather_visits:
+      states_stats['Vis_states_mat'][row,col]=df_average.Nr_visited_states[0]
+      states_stats['Vis_states_err'][row,col]=df_sem.Nr_visited_states[0]
+      if 'Non-digit' in df_average.keys():
+        states_stats['Non_digit_mat'][row,col] = df_average['Non-digit'][0]
+        states_stats['Non_digit_err'][row,col] = df_sem['Non-digit'][0]
+        
+    if gather_visible:
+      visible_states.append(d['vis_states'][:,:,:nr_gen_steps])
+  
+  if gather_visible:
+    visible_states = torch.cat(visible_states, dim=0)
     
-    if Ian!=[]:
-      fN='Visited_digits_k' + str(Ian.top_k_Hidden)+'.xlsx'
-      fNerr='Visited_digits_error_k' + str(Ian.top_k_Hidden)+'.xlsx'
-      fN_NDST='Nondigit_stateTime_k' + str(Ian.top_k_Hidden)+'.xlsx'
-      fNerr_NDST='Nondigit_stateTime_error_k' + str(Ian.top_k_Hidden)+'.xlsx'
-    else:
-      fN='Visited_digits_Lbiasing_k' + str(topk)+'.xlsx'
-      fNerr='Visited_digits_Lbiasing_error_k' + str(topk)+'.xlsx'
-      fN_NDST='Nondigit_stateTime_Lbiasing_k' + str(topk)+'.xlsx'
-      fNerr_NDST='Nondigit_stateTime_Lbiasing_error_k' + str(topk)+'.xlsx'
+  return states_stats, visible_states
 
+
+def Chimeras_nr_visited_states(model, classifier, Ian = None, topk=-1, apprx=1,plot=1,compute_new=1,
+                                      nr_sample_generated =100, nr_gen_steps=100, cl_labels=[], lS=25):
+    n_digits = model.Num_classes
+    Chim_type = '2LB' if Ian is None else 'Int'
+    
     if compute_new==1:
-      #both
-      Vis_states_mat = np.zeros((n_digits, n_digits))
-      Vis_states_err = np.zeros((n_digits, n_digits))
-      if n_digits==10:
-        Non_digit_mat  = np.zeros((n_digits, n_digits))
-        Non_digit_err  = np.zeros((n_digits, n_digits))
-
-      for row, col in combinations_of_two:
-        if Ian!=[]: #intersection method
-          d, df_average,df_sem, _ = Ian.generate_chimera(classifier,cats2intersect = [row,col],
-                                        sample_nr = nr_sample_generated,plot=0)
-        else: #double label biasing
-          LB2_hidden = model.getH_label_biasing(on_digits=[row,col], topk=topk)
-          LB2_hidden = LB2_hidden.repeat(1,nr_sample_generated)
-          d = model.generate_from_hidden(LB2_hidden, nr_gen_steps=100)
-          d = Classifier_accuracy(d, classifier,model,labels=[], Batch_sz= 100, plot=0, dS=30, l_sz=3)
-          df_average,df_sem, _ = classification_metrics(d,model,Plot=0,dS=50,Ian=1)
-
-        c_Tmat = c_Tmat+1
-        Vis_states_mat[row,col]=df_average.Nr_visited_states[0]
-        Vis_states_err[row,col]=df_sem.Nr_visited_states[0]
-        if n_digits==10:
-          Non_digit_mat[row,col] = df_average['Non-digit'][0]
-          Non_digit_err[row,col] = df_sem['Non-digit'][0]
-
-      save_mat_xlsx(Vis_states_mat, filename=fN)
-      save_mat_xlsx(Vis_states_err, filename=fNerr)
-      if n_digits==10:
-        save_mat_xlsx(Non_digit_mat, filename=fN_NDST)
-        save_mat_xlsx(Non_digit_err, filename=fNerr_NDST)
+      states_stats, _ = multiple_chimeras(model, classifier, sample_nr = nr_sample_generated, Ian = Ian, 
+                        nr_gen_steps = nr_gen_steps, topk = topk, gather_visits = False, gather_visible = False)
+      
+      for k, v in states_stats.items():
+        fN = f"{k}_topk{topk}_{Chim_type}.xlsx"
+        save_mat_xlsx(v, filename=fN)
 
     else: #load already computed Vis_states_mat
-      if n_digits==10:
-        Non_digit_mat = pd.read_excel(fN_NDST)
-        Non_digit_err = pd.read_excel(fNerr_NDST)
-        # Convert the DataFrame to a NumPy array
-        Non_digit_mat = Non_digit_mat.values
-        Non_digit_err = Non_digit_err.values
-      Vis_states_mat = pd.read_excel(fN)
-      # Convert the DataFrame to a NumPy array
-      Vis_states_mat = Vis_states_mat.values
-
-      Vis_states_err = pd.read_excel(fNerr)
-      # Convert the DataFrame to a NumPy array
-      Vis_states_err = Vis_states_err.values
+      states_stats = {'Vis_states_mat': np.zeros((n_digits, n_digits)),
+                'Vis_states_err': np.zeros((n_digits, n_digits)),
+                'Non_digit_mat': np.zeros((n_digits, n_digits)),
+                'Non_digit_err': np.zeros((n_digits, n_digits))}
+      for k, v in states_stats.items():
+        fN = f"{k}_topk{topk}_{Chim_type}.xlsx"
+        try:
+          states_stats[k] = pd.read_excel(fN).values
+        except:
+          print(f"File {fN} not found")
 
     if plot==1:
-
-      Vis_states_mat = Vis_states_mat.round(apprx)
-      Vis_states_err = Vis_states_err.round(apprx)
-
+      Vis_states_mat = states_stats['Vis_states_mat'].round(apprx)
       plt.figure(figsize=(15, 15))
       mask = np.triu(np.ones_like(Vis_states_mat),k=+1) # k=+1 per rimuovere la diagonale
       # Set the lower triangle to NaN
@@ -148,11 +148,7 @@ def Chimeras_nr_visited_states(model, classifier, Ian =[], topk=149, apprx=1,plo
       cbar.ax.tick_params(labelsize=lS)
       plt.show()
 
-    if n_digits==10:
-      #print('final c_Tmat',c_Tmat) #NOT USED
-      return Vis_states_mat, Vis_states_err,Non_digit_mat,Non_digit_err #,Transition_matrix_tensor
-    else:
-      return Vis_states_mat, Vis_states_err
+    return states_stats
     
         
 def Perc_H_act(model, sample_labels, gen_data_dictionary=[], dS = 50, l_sz = 5, layer_of_interest=2, plot = False):
