@@ -201,50 +201,6 @@ def Perc_H_act(model, sample_labels, gen_data_dictionary=[], dS = 50, l_sz = 5, 
     axis.set_ylim([0,100])
     return Mean_storing, Sem_storing
 
-
-def readout_V_to_Hlast(dbn,train_dataset,test_dataset, DEVICE='cuda'):
-  #Load data and labels
-  if 'CelebA' in dbn.dataset_id:
-    train_dataset = Multiclass_dataset(train_dataset, selected_idx= [20,31])
-    test_dataset = Multiclass_dataset(test_dataset, selected_idx = [20,31])
-  Xtrain = train_dataset['data'].to(DEVICE)
-  Xtest  = test_dataset['data'].to(DEVICE)
-  Ytrain = train_dataset['labels'].to(DEVICE)
-  Ytest  = test_dataset['labels'].to(DEVICE)
-  
-  n_train_batches, batch_sz, _ = Xtrain.shape
-  n_test_batches = Xtest.shape[0]
-  #get readout of the visible layer (i.e. from actual data)
-  readout_acc_V =[]
-  readout_acc = dbn.rbm_layers[1].get_readout(Xtrain, Xtest, Ytrain, Ytest)
-  print(f'Readout accuracy = {readout_acc*100:.2f}')
-  readout_acc_V.append(readout_acc)
-  
-  #get readout of the hidden layers
-  for rbm in dbn.rbm_layers:
-      #initialize the hidden representations
-      _Xtrain = torch.zeros((n_train_batches, batch_sz, rbm.Nout))
-      _Xtest = torch.zeros((n_test_batches, batch_sz, rbm.Nout))
-      #get the hidden representations of both the train and test sets
-      _Xtest, _ = rbm(Xtest)
-      batch_indices = list(range(n_train_batches))
-      random.shuffle(batch_indices)
-      with tqdm(batch_indices, unit = 'Batch') as tlayer:
-          for n in tlayer:
-              tlayer.set_description(f'Layer {rbm.layer_id}')
-              _Xtrain[n,:,:], _ = rbm(Xtrain[n,:,:])
-
-      #get readout of the hidden layer
-      readout_acc = rbm.get_readout(_Xtrain, _Xtest, Ytrain, Ytest)
-      print(f'Readout accuracy = {readout_acc*100:.2f}')
-      readout_acc_V.append(readout_acc)
-      #the hidden representations of the current layer will be used as 
-      #the input for the next layer
-      Xtrain = _Xtrain.clone()
-      Xtest  = _Xtest.clone()
-  return readout_acc_V
-
-
 def comparisons_plot(Results_dict, sel_key='Nr_visited_states_MEAN'):
   # parametri grafici
   def Nr_visited_states_MEAN_SEM(Results_dict, MNIST_fname):

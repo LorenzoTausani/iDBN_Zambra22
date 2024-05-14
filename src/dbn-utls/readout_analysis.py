@@ -10,80 +10,68 @@ import Study_generativity
 from Study_generativity import *
 from matplotlib.ticker import StrMethodFormatter
 
-def readout_V_to_Hlast(dbn,train_dataset,test_dataset, DEVICE='cuda', existing_classifier_list = []):
+def ridge_readout(classifier, Xtrain, Xtest, Ytest):
+  n_feat = Xtrain.shape[-1]
+  x_test  = Xtest.cpu().numpy().reshape(-1, n_feat)
+  y_test  = Ytest.cpu().numpy().flatten()
+  y_pred = classifier.predict(x_test)
+  readout_acc = accuracy_score(y_test, y_pred)
+  return readout_acc
+
+def readout_V_to_Hlast(dbn,train_dataset,test_dataset, DEVICE='cuda', existing_classifier_list = [], fraction_train = 1):
+  
   classifier_list = []
+
+  #Load data and labels
   if 'CelebA' in dbn.dataset_id:
     train_dataset = Multiclass_dataset(train_dataset, selected_idx= [20,31])
     test_dataset = Multiclass_dataset(test_dataset, selected_idx = [20,31])
-
   Xtrain = train_dataset['data'].to(DEVICE)
   Xtest  = test_dataset['data'].to(DEVICE)
   Ytrain = train_dataset['labels'].to(DEVICE)
   Ytest  = test_dataset['labels'].to(DEVICE)
-  readout_acc_V =[]
 
-  n_train_batches = Xtrain.shape[0]
+  n_train_batches, batch_sz, _ = Xtrain.shape
+  batch_indices = list(range(n_train_batches))
   n_test_batches = Xtest.shape[0]
-  batch_size = Xtrain.shape[1]
-
-  #upper = int(Xtrain.shape[0]*(4/5))
-  upper = Xtrain.shape[0]
+  upper = int(n_train_batches*fraction_train) #also 4/5
+  
+  #get readout of the visible layer (i.e. from actual data)
+  readout_acc_V =[]
   if len(existing_classifier_list) == 0:
     readout_acc,classifier = dbn.rbm_layers[1].get_readout(Xtrain[:upper, :, :], Xtest, Ytrain[:upper, :, :], Ytest)
+    classifier_list.append(classifier)
   else:
-    n_feat = Xtrain.shape[-1]
-    x_test  = Xtest.cpu().numpy().reshape(-1, n_feat)
-    y_test  = Ytest.cpu().numpy().flatten()
-    classifier = existing_classifier_list[0]
-    y_pred = classifier.predict(x_test)
-    readout_acc = accuracy_score(y_test, y_pred)
-
-  classifier_list.append(classifier)
+    readout_acc = ridge_readout(existing_classifier_list[0], Xtrain, Xtest, Ytest)
   print(f'Readout accuracy = {readout_acc*100:.2f}')
   readout_acc_V.append(readout_acc)
 
-
+  #get readout of the hidden layers
   for rbm_idx,rbm in enumerate(dbn.rbm_layers):
-      Xtrain = Xtrain.to(DEVICE)
-      Xtest  = Xtest.to(DEVICE)
-      _Xtrain = torch.zeros((n_train_batches, batch_size, rbm.Nout))
-      _Xtest = torch.zeros((n_test_batches, batch_size, rbm.Nout))
-
+      #initialize the hidden representations
+      _Xtrain = torch.zeros((n_train_batches, batch_sz, rbm.Nout))
+      _Xtest = torch.zeros((n_test_batches, batch_sz, rbm.Nout))
+      #get the hidden representations of both the train and test sets
       _Xtest, _ = rbm(Xtest)
-
-      batch_indices = list(range(n_train_batches))
       random.shuffle(batch_indices)
       with tqdm(batch_indices, unit = 'Batch') as tlayer:
-          for idx, n in enumerate(tlayer):
-
+          for n in tlayer:
               tlayer.set_description(f'Layer {rbm.layer_id}')
               _Xtrain[n,:,:], _ = rbm(Xtrain[n,:,:])
-
-          #end BATCHES
-      #end WITH
-      print(rbm_idx)
-      #if rbm_idx==2:
-      print('eccomi')
-      #upper = int(_Xtrain.shape[0]*(4/5))
-      upper = _Xtrain.shape[0]
-
+              
+      #get readout of the hidden layer
       if len(existing_classifier_list) == 0:
         readout_acc, classifier = rbm.get_readout(_Xtrain[:upper, :, :], _Xtest, Ytrain[:upper, :, :], Ytest)
+        classifier_list.append(classifier)
       else:
-        n_feat = _Xtrain.shape[-1]
-        x_test  = _Xtest.cpu().numpy().reshape(-1, n_feat)
-        y_test  = Ytest.cpu().numpy().flatten()
-        classifier = existing_classifier_list[rbm_idx+1]
-        y_pred = classifier.predict(x_test)
-        readout_acc = accuracy_score(y_test, y_pred)
-
-      classifier_list.append(classifier)
+        readout_acc = ridge_readout(existing_classifier_list[rbm_idx+1], Xtrain, Xtest, Ytest)
       print(f'Readout accuracy = {readout_acc*100:.2f}')
-      #end
       readout_acc_V.append(readout_acc)
-
+      #the hidden representations of the current layer will be used as 
+      #the input for the next layer
       Xtrain = _Xtrain.clone()
       Xtest  = _Xtest.clone()
+      
   return readout_acc_V, classifier_list
 
 
