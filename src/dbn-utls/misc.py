@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import torch
 from google.colab import files
 from torch.utils.data import Dataset
 import math
@@ -56,7 +57,25 @@ class MyDataset(Dataset):
 
         return feature, label
     
-def decrease_labels_by_10(data):
+def relabel_09(data, old_labels):
+    old_labels = sorted(old_labels)
+    #relabels the data from the indices sorted_list to 0-9
     image, label = data
-    label -= 10  # Sottrai 10 da ciascuna etichetta
-    return image, label
+    return image, old_labels.index(label)
+
+def raddrizza_lettere(data_train_retraining_ds,data_test_retraining_ds):
+    #questi loop sono per raddrizzare le lettere
+    data_train_retraining_L = []
+    for item in data_train_retraining_ds:
+        image = item[0].view(28, 28)
+        image = torch.rot90(image, k=-1)
+        image = torch.flip(image, [1])
+        data_train_retraining_L.append((image,item[1]))
+    data_test_retraining_L = []
+    for item in data_test_retraining_ds:
+        image= item[0].view(28, 28)
+        image = torch.rot90(image, k=-1)
+        image = torch.flip(image, [1])
+        data_test_retraining_L.append((image,item[1]))
+    data_test_retraining_ds = data_test_retraining_L
+    data_train_retraining_ds = data_train_retraining_L

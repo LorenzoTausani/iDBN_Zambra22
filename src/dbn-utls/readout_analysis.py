@@ -6,6 +6,8 @@ import pickle
 import os
 import json
 from sklearn.metrics import accuracy_score
+from data_load import data_and_labels, load_NPZ_dataset
+from misc import relabel_09
 import Study_generativity
 from Study_generativity import *
 from matplotlib.ticker import StrMethodFormatter
@@ -106,21 +108,6 @@ def sampling_gen_examples(results, prob_distr, cumulative_sum,desired_len_array 
      c=c+1
   return index_selected_samples
 
-def load_existing_retrainDS(trainfile_path, testfile_path, nr_batches_retraining):
-
-  train_dataset = dict(np.load(trainfile_path))
-  test_dataset = dict(np.load(testfile_path))
-  # Convert the numpy arrays to torch tensors
-  for key in train_dataset:
-      train_dataset[key] = torch.from_numpy(train_dataset[key])
-      test_dataset[key]= torch.from_numpy(test_dataset[key])
-
-  train_data_retraining_ds = train_dataset['data'][:nr_batches_retraining,:,:]
-  train_labels_retraining_ds = train_dataset['labels'][:nr_batches_retraining,:,:]
-  train_dataset_retraining_ds = {'data': train_data_retraining_ds, 'labels': train_labels_retraining_ds}
-  test_dataset_retraining_ds = test_dataset
-  return train_dataset_retraining_ds, test_dataset_retraining_ds
-
 def random_selection_withinBatch(batch_size=128):
   # Creazione di una lista di tutti gli indici possibili da 0 a 127
   all_indices = list(range(batch_size))
@@ -175,126 +162,61 @@ def mixing_data_wihin_batch(half_MNIST,half_retraining_ds):
   return mix_retraining_ds_MNIST
   
 
-def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, dbn=[], classifier=[], n_steps_generation = 10, ds_type = 'EMNIST', half_MNIST_gen=True, Type_gen = 'chimeras', H_type = 'det', selection_gen = False, correction_type = 'frequency'):
+def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, dbn=[], classifier=[], 
+                        n_steps_generation = 10, ds_type = 'EMNIST', half_isgen=True, Type_gen = 'chimeras',
+                        H_type = 'det', selection_gen = False, correction_type = 'frequency'):
   #Type_gen = 'chimeras'/'lbl_bias'/'mix'
   #NOTA: il labelling dell'EMNIST by class ha 62 labels: le cifre (0-9), lettere MAUSCOLE (10-36), lettere MINUSCOLE(38-62)
   #20,000 uppercase letters from the first 10 EMNIST classes.
-  coeff = 1
-  nr_batches_retraining = round(20000/128) 
+  coeff = 1; batch_sz = 128; sample_sz = 20000
+  nr_batches_retraining = round(sample_sz/batch_sz) 
   half_batches = round(nr_batches_retraining/2)
-  half_ds_size = half_batches*128 #i.e. 9984
+  half_ds_size = half_batches*batch_sz #i.e. 9984
   
-
-  if selection_gen == True and half_MNIST_gen==True:
+  if selection_gen == True and half_isgen==True:
     coeff = 2 #moltiplicatore. Un tempo stava a 2
-    vectors = []
-    for batch in MNIST_train_dataset['data']: #one batch at a time
-        vectors.append(torch.mean(batch,axis = 1))
-    avg_pixels_active_TrainMNIST = torch.cat(vectors) #This is the distribution of avg pixels active in the MNIST train dataset
+    #This is the distribution of avg pixels active in the MNIST train dataset
+    avg_pixels_active_TrainMNIST = torch.cat([torch.mean(batch, axis=1) for batch in MNIST_train_dataset['data']])
 
-
-  def decrease_labels_by_10(data, sorted_list):
-    image, label = data
-    return image, sorted_list.index(label)
-
-  #load  EMNIST byclass data
+  root = '/content/gdrive/My Drive/ZAMBRA_DBN/'
+  #load EMNIST byclass data
   if not(bool(train_dataset_retraining_ds)):
-    Zambra_folder_drive = '/content/gdrive/My Drive/ZAMBRA_DBN/'
-    test_filename = 'test_dataset_'+ds_type+'.npz'
-    train_filename = 'train_dataset_'+ds_type+'.npz'
-    trainfile_path= os.path.join(Zambra_folder_drive,'dataset_dicts',train_filename)
-    testfile_path = os.path.join(Zambra_folder_drive,'dataset_dicts',test_filename) 
-    if os.path.exists(trainfile_path):
-      train_dataset_retraining_ds, test_dataset_retraining_ds = load_existing_retrainDS(trainfile_path, testfile_path, nr_batches_retraining)
-    else:
+    try:
+      train_dataset_retraining_ds = load_NPZ_dataset(os.path.join(root,'dataset_dicts',f'train_dataset_{ds_type}.npz'), nr_batches_retraining)
+      test_dataset_retraining_ds = load_NPZ_dataset(os.path.join(root,'dataset_dicts',f'test_dataset_{ds_type}.npz'))
+    except:
       transform =transforms.Compose([transforms.ToTensor()])
       if ds_type == 'EMNIST':
-          data_train_retraining_ds = datasets.EMNIST('../data', train=True,split = 'byclass', download=True, transform=transform)
-          data_test_retraining_ds = datasets.EMNIST('../data', train=False,split = 'byclass', download=True, transform=transform)
-          #target_classes = list(range(10, 20)) #i.e. the first 10 capital letter classes
-          target_classes = [17,18,19,20,21,22,23,24,25,26] #migliori dritte: [22,32,26,16,30,11,20,10,23,25], medi[17,18,19,20,21,22,23,24,25,26]
-          sorted_list = sorted(target_classes)
-          data_train_retraining_ds = [item for item in data_train_retraining_ds if item[1] in target_classes]
-          data_test_retraining_ds = [item for item in data_test_retraining_ds if item[1] in target_classes]
-          #i relabel data from 10-19 to 0-9
-          data_train_retraining_ds = [decrease_labels_by_10(item,sorted_list) for item in data_train_retraining_ds]
-          data_test_retraining_ds = [decrease_labels_by_10(item,sorted_list) for item in data_test_retraining_ds]
-          #questi loop sono per raddrizzare le lettere
-          # data_train_retraining_L = []
-          # for item in data_train_retraining_ds:
-          #   image = item[0].view(28, 28)
-          #   image = torch.rot90(image, k=-1)
-          #   image = torch.flip(image, [1])
-          #   data_train_retraining_L.append((image,item[1]))
-
-          # data_test_retraining_L = []
-          # for item in data_test_retraining_ds:
-          #   image= item[0].view(28, 28)
-          #   image = torch.rot90(image, k=-1)
-          #   image = torch.flip(image, [1])
-          #   data_test_retraining_L.append((image,item[1]))
-
-          # data_test_retraining_ds = data_test_retraining_L
-          # data_train_retraining_ds = data_train_retraining_L
+        data_train_retraining_ds = datasets.EMNIST('../data', train=True,split = 'byclass', download=True, transform=transform)
+        data_test_retraining_ds = datasets.EMNIST('../data', train=False,split = 'byclass', download=True, transform=transform)
+        #target_classes = list(range(10, 20)) #i.e. the first 10 capital letter classes
+        #data are relabelled from target_classes to 0-9
+        target_classes = [17,18,19,20,21,22,23,24,25,26] #migliori dritte: [22,32,26,16,30,11,20,10,23,25], medi[17,18,19,20,21,22,23,24,25,26]
+        data_train_retraining_ds = [relabel_09(item,target_classes) for item in data_train_retraining_ds if item[1] in target_classes]
+        data_test_retraining_ds = [relabel_09(item,target_classes) for item in data_test_retraining_ds if item[1] in target_classes]
+        #raddrizza lettere andava qua
       elif ds_type == 'fMNIST':
           data_train_retraining_ds = datasets.FashionMNIST('../data', train=True, download=True, transform=transform)
           data_test_retraining_ds = datasets.FashionMNIST('../data', train=False, download=True, transform=transform)
 
-      train_data_retraining_ds, train_labels_retraining_ds = data_and_labels(data_train_retraining_ds, BATCH_SIZE=128,NUM_FEAT=np.int32(28*28),DATASET_ID='MNIST',n_cols_labels=1)
-      test_data_retraining_ds, test_labels_retraining_ds = data_and_labels(data_test_retraining_ds, BATCH_SIZE=128,NUM_FEAT=np.int32(28*28),DATASET_ID='MNIST',n_cols_labels=1)
-    
+      train_data_retraining_ds, train_labels_retraining_ds = data_and_labels(data_train_retraining_ds, BATCH_SIZE=batch_sz,NUM_FEAT=np.int32(28*28),DATASET_ID='MNIST',n_cols_labels=1)
+      test_data_retraining_ds, test_labels_retraining_ds = data_and_labels(data_test_retraining_ds, BATCH_SIZE=batch_sz,NUM_FEAT=np.int32(28*28),DATASET_ID='MNIST',n_cols_labels=1)
       #i select just 20000 examples (19968 per l'esattezza)
-      train_data_retraining_ds = train_data_retraining_ds[:nr_batches_retraining,:,:]
-      train_labels_retraining_ds = train_labels_retraining_ds[:nr_batches_retraining,:,:]
-      train_dataset_retraining_ds = {'data': train_data_retraining_ds, 'labels': train_labels_retraining_ds}
+      train_dataset_retraining_ds = {'data': train_data_retraining_ds[:nr_batches_retraining,:,:], 'labels': train_labels_retraining_ds[:nr_batches_retraining,:,:]}
       test_dataset_retraining_ds = {'data': test_data_retraining_ds, 'labels': test_labels_retraining_ds}
 
     if dbn==[]:
         return train_dataset_retraining_ds,test_dataset_retraining_ds
     
-  if not(half_MNIST_gen):
-     half_MNIST = MNIST_train_dataset['data'][:half_batches,:,:].to('cuda')
+  if not(half_isgen):
+    half_MNIST = MNIST_train_dataset['data'][:half_batches,:,:].to('cuda')
   else:
-    compute_inverseW_for_lblBiasing_ZAMBRA(dbn,MNIST_train_dataset)
-    n_samples = math.ceil(10000*coeff/(10*n_steps_generation))
-    if H_type == 'det':
-      for dig in range(dbn.Num_classes): #at the end of this loop, you have one example of label biasing per class
-          g_H = label_biasing_ZAMBRA(dbn, on_digits=dig, topk = -1)
-          if dig == 0:
-              g_H0to9 = g_H
-          else:
-              g_H0to9 = torch.hstack((g_H0to9,g_H)) #final size: [1000, 10]
-      gen_hidden_100rep = g_H0to9.repeat(1,n_samples)
-      
-    #NON FUNZIONA:
-    #noise = torch.normal(mean=0.0, std=1, size=(1000, n_samples*10))
-    #gen_hidden_100rep = gen_hidden_100rep + noise
-    elif H_type == 'stoch':
-      original_W = dbn.weights_inv
-      tensor_size = (1000, n_samples * 10)
-      gen_hidden_100rep = torch.rand(tensor_size)
-
-      for it in range(n_samples):
-        #SD = random.uniform(0, float(torch.std(original_W)))
-        SD = float(torch.std(original_W))
-        dbn.weights_inv = original_W + torch.normal(mean=0.0, std=SD, size=dbn.weights_inv.shape)
-
-        for dig in range(dbn.Num_classes):
-          g_H = label_biasing_ZAMBRA(dbn, on_digits=dig, topk = -1)
-          if dig == 0:
-            g_H0to9 = g_H
-          else:
-            g_H0to9 = torch.hstack((g_H0to9,g_H))
-        gen_hidden_100rep[:,((it+1)*10)-10:((it+1)*10)] = g_H0to9
-
-    else:
-      tensor_size = (1000, n_samples * 10)
-      # Generate the tensor of random values from uniform distribution
-      gen_hidden_100rep = torch.rand(tensor_size)
-
-    VStack_labels=torch.tensor(range(dbn.Num_classes), device = 'cuda')
-    VStack_labels=VStack_labels.repeat(n_samples)
-    dict_DBN_lBias_classic = generate_from_hidden_ZAMBRA(dbn, gen_hidden_100rep, nr_gen_steps=n_steps_generation)
+    dbn.invW4LB(MNIST_train_dataset)
+    n_samples = math.ceil((sample_sz/2)*coeff/(10*n_steps_generation))
+    #NOTA: QUA NON VIENE GESTITO IL CODICE DEI VALORI RANDOM, come veniva fatto prima
+    noisy_W = False if H_type == 'det' else True
+    LB_hidden, LB_labels = dbn.label_biasing(topk = -1,n_reps= n_samples, noisy_W = noisy_W) 
+    dict_DBN_lBias_classic = dbn.generate_from_hidden(LB_hidden, nr_gen_steps=n_steps_generation)
     
     if Type_gen == 'lbl_bias':
       Vis_states = dict_DBN_lBias_classic['vis_states'].permute(0, 2, 1)
@@ -302,30 +224,29 @@ def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, d
       indices = torch.randperm(Vis_states.size(0))[:math.ceil(half_ds_size*coeff)]
       # Sample the rows using the generated indices
       sampled_data = Vis_states[indices]
-       
     else:
-       Mean, _ = Perc_H_act(dbn, VStack_labels, gen_data_dictionary=dict_DBN_lBias_classic, dS = 50, l_sz = 5, layer_of_interest=2)
-       k = int((torch.mean(Mean, axis=0)[0]*dbn.top_layer_size)/100)
-       Ian = Intersection_analysis_ZAMBRA(dbn, top_k_Hidden=k,nr_steps=n_steps_generation)
-       digit_digit_common_elements_count_biasing = Ian.do_intersection_analysis()
-       n_samples = math.ceil(10000*coeff/(45*n_steps_generation))
-       c=0
-       for row in range(10):
-          for col in range(row+1,10): #45 combinations(upper diagonal)
-            d, df_average,df_sem, Transition_matrix_rowNorm = Ian.generate_chimera_lbl_biasing(classifier,elements_of_interest = [row,col], nr_of_examples = n_samples, temperature = 1, plot=0, entropy_correction=[])
-            if c==0:
-                Chim_gen_ds = d['vis_states'][:,:,:n_steps_generation]
-            else:
-                Chim_gen_ds = torch.cat((Chim_gen_ds, d['vis_states'][:,:,:n_steps_generation]), dim=0)
-            c=c+1
-
-       Vis_states_chimera = Chim_gen_ds.permute(0, 2, 1)
-       Vis_states_chimera = Vis_states_chimera.reshape(Vis_states_chimera.shape[0]*Vis_states_chimera.shape[1],Vis_states_chimera.shape[2]) #Vis_states.shape[2]=784
-       indices = torch.randperm(Vis_states_chimera.size(0))[:math.ceil(half_ds_size*coeff)]
-       # Sample the rows using the generated indices
-       sampled_data = Vis_states_chimera[indices]
+      Mean, _ = Perc_H_act(dbn, LB_labels, gen_data_dictionary=dict_DBN_lBias_classic, 
+                          layer_of_interest=2, plot = False)
+      k = int((torch.mean(Mean, axis=0)[0]*dbn.top_layer_size)/100)
+      Ian = Intersection_analysis(dbn, top_k_Hidden=k,nr_steps=n_steps_generation)
+      Ian.do_intersection_analysis()
+      n_samples = math.ceil(10000*coeff/(45*n_steps_generation))
+      c=0
+      for row in range(10):
+        for col in range(row+1,10): #45 combinations(upper diagonal)
+          d, _,_,_ = Ian.generate_chimera_lbl_biasing(classifier,elements_of_interest = [row,col], nr_of_examples = n_samples, temperature = 1, plot=0, entropy_correction=[])
+          if c==0:
+              Chim_gen_ds = d['vis_states'][:,:,:n_steps_generation]
+          else:
+              Chim_gen_ds = torch.cat((Chim_gen_ds, d['vis_states'][:,:,:n_steps_generation]), dim=0)
+          c=c+1
+      Vis_states_chimera = Chim_gen_ds.permute(0, 2, 1)
+      Vis_states_chimera = Vis_states_chimera.reshape(Vis_states_chimera.shape[0]*Vis_states_chimera.shape[1],Vis_states_chimera.shape[2]) #Vis_states.shape[2]=784
+      indices = torch.randperm(Vis_states_chimera.size(0))[:math.ceil(half_ds_size*coeff)]
+      # Sample the rows using the generated indices
+      sampled_data = Vis_states_chimera[indices]
     
-    if selection_gen == True and half_MNIST_gen==True:
+    if selection_gen == True and half_isgen==True:
         avg_activity_sampled_data =  torch.mean(sampled_data,axis = 1)
         hist, bin_edges = np.histogram(avg_pixels_active_TrainMNIST, bins=20, density=True)
         sum_hist = np.sum(hist)
@@ -364,7 +285,7 @@ def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, d
         plt.legend()
         plt.show()
 
-    half_MNIST = sampled_data.view(half_batches, 128, 784)
+    half_MNIST = sampled_data.view(half_batches, batch_sz, 784)
 
   half_retraining_ds = train_dataset_retraining_ds['data'][:half_batches,:,:].to('cuda')
   
@@ -449,7 +370,7 @@ def relearning(retrain_ds_type = 'EMNIST', mixing_type =[], n_steps_generation=1
     else:
        half_MNIST_gen_option = True
 
-    Retrain_ds,Retrain_test_ds,mix_retrain_ds = get_retraining_data(MNISTtrain_ds,{},dbn, classifier,n_steps_generation = n_steps_generation,  ds_type = retrain_ds_type, half_MNIST_gen=half_MNIST_gen_option, Type_gen = mixing_type,H_type = H_type, selection_gen = selection_gen, correction_type = correction_type)
+    Retrain_ds,Retrain_test_ds,mix_retrain_ds = get_retraining_data(MNISTtrain_ds,{},dbn, classifier,n_steps_generation = n_steps_generation,  ds_type = retrain_ds_type, half_isgen=half_MNIST_gen_option, Type_gen = mixing_type,H_type = H_type, selection_gen = selection_gen, correction_type = correction_type)
     MNIST_classifier_list= get_ridge_classifiers(MNISTtrain_ds, MNISTtest_ds,Force_relearning = False, last_layer_sz=last_layer_sz)
 
     
@@ -493,7 +414,7 @@ def relearning(retrain_ds_type = 'EMNIST', mixing_type =[], n_steps_generation=1
     for iteration in range(nr_iter_training):
         for ep in range(inner_loop_epochs):
           if new_retrain_data == True:
-            mix_retrain_ds = get_retraining_data(MNISTtrain_ds,Retrain_ds,dbn, classifier,n_steps_generation = n_steps_generation,  ds_type = retrain_ds_type, half_MNIST_gen=half_MNIST_gen_option, Type_gen = mixing_type,H_type =H_type, selection_gen = selection_gen, correction_type = correction_type)
+            mix_retrain_ds = get_retraining_data(MNISTtrain_ds,Retrain_ds,dbn, classifier,n_steps_generation = n_steps_generation,  ds_type = retrain_ds_type, half_isgen=half_MNIST_gen_option, Type_gen = mixing_type,H_type =H_type, selection_gen = selection_gen, correction_type = correction_type)
             Xtrain = mix_retrain_ds.to(DEVICE)
             print(ep)
           dbn.train(Xtrain, Xtest, Ytrain, Ytest, LPARAMS, readout = READOUT, num_discr = NUM_DISCR)
@@ -675,30 +596,24 @@ def readout_epoch0_1andHalfBatches(dbn,train_dataset_retraining_ds, test_dataset
     R_list.append(readout_acc_V_DIGITS[-1])
   return R_list
 
-def readout_comparison(dbn, classifier,MNIST_train_dataset,MNIST_test_dataset,mixing_type_options = ['[]','origMNIST', 'chimeras'], retr_DS = 'EMNIST', H_type = ['det', 'det', 'det'], new_retrain_dataV = [False, False, False]):
+def readout_comparison(dbn, classifier,MNIST_train_dataset,MNIST_test_dataset,
+                      mixing_type_options = ['[]','origMNIST', 'chimeras'], retr_DS = 'EMNIST', 
+                      H_type = ['det', 'det', 'det'], new_retrain_dataV = [False, False, False]):
     
-  if not(isinstance(H_type, list)):
-     H_type = [H_type]*len(mixing_type_options)
-  if not(isinstance(new_retrain_dataV, list)):
-     new_retrain_dataV = [new_retrain_dataV]*len(mixing_type_options)
-  new_retrain_dataV_list = []
-  for nR in new_retrain_dataV:
-     if nR:
-        new_retrain_dataV_list.append('1g4e')
-     else:
-        new_retrain_dataV_list.append('')
+  if not isinstance(H_type, list): H_type = [H_type] * len(mixing_type_options)
+  if not isinstance(new_retrain_dataV, list): new_retrain_dataV = [new_retrain_dataV] * len(mixing_type_options)
+  new_retrain_dataV_list = ['1g4e' if nR else '' for nR in new_retrain_dataV]
+
   Readouts = np.zeros((11+3,len(mixing_type_options)*2))
+  
   for id_mix,mix_type in enumerate(mixing_type_options):
     H_type_it = H_type[id_mix]
-    if mix_type=='[]':
-        mix_type=[]
+    if mix_type=='[]': mix_type=[]
+    #you will have the half_MNIST_gen_option active (True)
+    #only if your mixing type is not origMNIST
+    half_MNIST_gen_option = mix_type != 'origMNIST'
 
-    if mix_type == 'origMNIST':
-        half_MNIST_gen_option = False
-    else:
-        half_MNIST_gen_option = True
-
-    Retrain_ds,Retrain_test_ds,mix_retrain_ds = get_retraining_data(MNIST_train_dataset,{},dbn, classifier,100,  ds_type = retr_DS, half_MNIST_gen=half_MNIST_gen_option, Type_gen = mix_type, selection_gen = False, correction_type = 'frequency')
+    Retrain_ds,Retrain_test_ds,mix_retrain_ds = get_retraining_data(MNIST_train_dataset,{},dbn, classifier,100,  ds_type = retr_DS, half_isgen=half_MNIST_gen_option, Type_gen = mix_type, selection_gen = False, correction_type = 'frequency')
 
     if mix_type=='[]':
       R = readout_epoch0_1andHalfBatches(dbn,Retrain_ds,Retrain_test_ds,MNIST_train_dataset,MNIST_test_dataset, mix_ds = [])

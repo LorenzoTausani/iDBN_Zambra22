@@ -155,11 +155,11 @@ def Chimeras_nr_visited_states(model, classifier, Ian =[], topk=149, apprx=1,plo
       return Vis_states_mat, Vis_states_err
     
         
-def Perc_H_act(model, sample_labels, gen_data_dictionary=[], dS = 50, l_sz = 5, layer_of_interest=2):
+def Perc_H_act(model, sample_labels, gen_data_dictionary=[], dS = 50, l_sz = 5, layer_of_interest=2, plot = False):
 
     c=0 #inizializzo il counter per cambiamento colore
     cmap = cm.get_cmap('hsv') # inizializzo la colormap che utilizzerò per il plotting
-    figure, axis = plt.subplots(1, 1, figsize=(15,15)) #setto le dimensioni della figura
+    if plot: _, axis = plt.subplots(1, 1, figsize=(15,15))
     lbls = [] # qui storo le labels x legenda
 
     for digit in range(model.Num_classes): # per ogni digit...
@@ -182,23 +182,23 @@ def Perc_H_act(model, sample_labels, gen_data_dictionary=[], dS = 50, l_sz = 5, 
           y_lbl = '% active H units'
 
         SEM = SEM.cpu() #sposto la SEM su CPU x plotting
-        x = range(1,nr_steps+1) #asse delle x, rappresentante il nr di step di ricostruzione svolti
-        plt.plot(x, MEAN, c = Color, linewidth=l_sz) #plotto la media
-        plt.fill_between(x,MEAN-SEM, MEAN+SEM, color=Color, alpha=0.3) # e le barre di errore
+        if plot:
+          x = range(1,nr_steps+1) #asse delle x, rappresentante il nr di step di ricostruzione svolti
+          plt.plot(x, MEAN, c = Color, linewidth=l_sz) #plotto la media
+          plt.fill_between(x,MEAN-SEM, MEAN+SEM, color=Color, alpha=0.3) # e le barre di errore
         
         c = c+25
         lbls.append(digit)
-
-    axis.legend(lbls, bbox_to_anchor=(1.04,1), loc="upper left", fontsize=dS) # legenda
-    #ridimensiono etichette assi e setto le labels
-    axis.tick_params(axis='x', labelsize= dS) 
-    axis.tick_params(axis='y', labelsize= dS)
-    axis.set_ylabel(y_lbl,fontsize=dS)
-    axis.set_xlabel('Generation step',fontsize=dS)
-    axis.set_title(y_lbl+' - classwise',fontsize=dS)
-
-
-    axis.set_ylim([0,100])
+    if plot:
+      axis.legend(lbls, bbox_to_anchor=(1.04,1), loc="upper left", fontsize=dS) # legenda
+      #ridimensiono etichette assi e setto le labels
+      axis.tick_params(axis='x', labelsize= dS) 
+      axis.tick_params(axis='y', labelsize= dS)
+      axis.set_ylabel(y_lbl,fontsize=dS)
+      axis.set_xlabel('Generation step',fontsize=dS)
+      axis.set_title(y_lbl+' - classwise',fontsize=dS)
+      axis.set_ylim([0,100])
+    
     return Mean_storing, Sem_storing
 
 def comparisons_plot(Results_dict, sel_key='Nr_visited_states_MEAN'):

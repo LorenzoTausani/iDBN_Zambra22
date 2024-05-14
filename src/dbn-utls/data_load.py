@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 
 
-from misc import decrease_labels_by_10, reshape_data, MyDataset
+from misc import relabel_09, reshape_data, MyDataset
 from dbns import *
 from Classifiers import *
 
@@ -139,10 +139,8 @@ def load_data_ZAMBRA(ds_id: str,batch_sz: int ,Zambra_folder_drive: str):
             #NOTA: il labelling dell'EMNIST by class ha 62 labels: le cifre (0-9), lettere MAUSCOLE (10-36), lettere MINUSCOLE(38-62)
             #In the Zambra paper they use 20 uppercase letters from the first 10 EMNIST classes.
             target_classes = list(range(10, 20))
-            data_train = [item for item in data_train if item[1] in target_classes]
-            data_test = [item for item in data_test if item[1] in target_classes]
-            data_train = [decrease_labels_by_10(item) for item in data_train]
-            data_test = [decrease_labels_by_10(item) for item in data_test]   
+            data_train = [relabel_09(item, target_classes) for item in data_train if item[1] in target_classes]
+            data_test = [relabel_09(item, target_classes) for item in data_test if item[1] in target_classes]  
         elif ds_id=='CIFAR10':
             transform = transforms.Compose([
                 transforms.Grayscale(),
@@ -371,3 +369,12 @@ def classifier_loader(dbn,train_dataset_original, test_dataset_original, selecte
             classifier = CelebA_ResNet_classifier(ds_loaders = [],  num_classes = num_classes, filename=fname)   
     classifier.eval() #i put the classifier in evaluation mode
     return classifier
+
+
+def load_NPZ_dataset(ds_filepath, nr_batches_retraining: None|int = None):
+    dataset = dict(np.load(ds_filepath))
+    # Convert the numpy arrays to torch tensors
+    dataset = {k: torch.from_numpy(v) for k, v in dataset.items()}
+    if nr_batches_retraining is not None:
+        dataset = {'data': dataset['data'][:nr_batches_retraining, :, :], 'labels': dataset['labels'][:nr_batches_retraining, :, :]}
+    return dataset

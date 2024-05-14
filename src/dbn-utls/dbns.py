@@ -193,15 +193,23 @@ class DBN(torch.nn.Module):
 
         return weights_inv
     
-    def getH_label_biasing(self, on_digits: int =1, topk: int = 149):
+    def getH_label_biasing(self, on_digits: int =1, topk: int = 149, noisy_W = False):
         # aim of this function is to implement the label biasing procedure described in
         # https://www.frontiersin.org/articles/10.3389/fpsyg.2013.00515/full, getting
         # the activations in the hidden layer
         # Now i set the label vector from which i will obtain the hidden layer of interest 
         Biasing_vec = torch.zeros (self.Num_classes,1, device = self.DEVICE)
         Biasing_vec[on_digits] = 1
-        #I compute the biased hidden vector as the matmul of the trasposed weights_inv and the biasing vec. gen_hidden will have size (Hidden layer size x 1)
-        gen_hidden= torch.matmul(torch.transpose(self.weights_inv,0,1), Biasing_vec)
+        if noisy_W:
+            #generate using a noisy version of the weights_inv matrix
+            W = self.weights_inv
+            W_sd = float(torch.std(W)) #random.uniform(0, float(torch.std(original_W))) 
+            W = W + torch.normal(mean=0.0, std=W_sd, size=W.shape)
+            gen_hidden= torch.matmul(torch.transpose(W,0,1), Biasing_vec)
+        else:
+            #I compute the biased hidden vector as the matmul of the trasposed weights_inv and the biasing vec. 
+            # gen_hidden will have size (Hidden layer size x 1)
+            gen_hidden= torch.matmul(torch.transpose(self.weights_inv,0,1), Biasing_vec)
 
         if topk>-1: #ATTENZIONE: label biasing con più di una label attiva (e.g. on_digits=[4,6]) funziona UNICAMENTE con topk>-1 (i.e. attivando le top k unità piu attive e silenziando le altre)
             #In caso contrario da errore CUDA non meglio specificato
@@ -213,8 +221,8 @@ class DBN(torch.nn.Module):
 
         return gen_hidden
     
-    def label_biasing(self, topk: int = 149,n_reps: int = 100):
-        LB_hidden = torch.cat([self.getH_label_biasing(on_digits=dig, topk=topk) 
+    def label_biasing(self, topk: int = -1,n_reps: int = 100, noisy_W = False):
+        LB_hidden = torch.cat([self.getH_label_biasing(on_digits=dig, topk=topk, noisy_W=noisy_W) 
                             for dig in range(self.Num_classes)], dim=1)
         #LB_labels is a tensor containing the labels of the generated examples.
         #This will help for computing classification accuracy
@@ -225,11 +233,14 @@ class DBN(torch.nn.Module):
         LB_labels=LB_labels.repeat(n_reps)
         return LB_hidden, LB_labels
     
-    def random_hidden_bias(self, n: int, size: tuple):
-        hidden = torch.zeros(size)
-        for i in range(size[0]):
-            indices = random.sample(range(size[1]), n)
-            hidden[i, indices] = 1
+    def random_hidden_bias(self, n: int, size: tuple, discrete = True):
+        if discrete:
+            hidden = torch.zeros(size, device = self.DEVICE)
+            for i in range(size[0]):
+                indices = random.sample(range(size[1]), n)
+                hidden[i, indices] = 1
+        else: 
+            hidden = torch.rand(size, device = self.DEVICE)
         return hidden
     
     def top_down_1step(self,gen_step,hid_prob,hid_states,vis_prob,vis_states):
