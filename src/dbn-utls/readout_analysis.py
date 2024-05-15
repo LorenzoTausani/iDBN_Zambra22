@@ -185,7 +185,7 @@ def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, d
     if dbn==[]:
         return retraining_ds
     
-  if not(Type_gen in ['chimeras','lbl_bias']):
+  if not(Type_gen in ['chimeras','lbl_bias','rand']):
     half_MNIST = MNIST_train_dataset['data'][:half_batches,:,:].to('cuda')
   else:
     dbn.invW4LB(MNIST_train_dataset)
@@ -194,10 +194,10 @@ def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, d
     noisy_W = False if H_type == 'det' else True
     LB_hidden, LB_labels = dbn.label_biasing(topk = -1,n_reps= n_samples, noisy_W = noisy_W) 
     dict_DBN_lBias_classic = dbn.generate_from_hidden(LB_hidden, nr_gen_steps=n_steps_generation)
-    
+
     if Type_gen == 'lbl_bias':
       visible_states = dict_DBN_lBias_classic['vis_states']
-    else:
+    elif Type_gen == 'chimeras':
       Mean, _ = Perc_H_act(dbn, LB_labels, gen_data_dictionary=dict_DBN_lBias_classic, 
                           layer_of_interest=2, plot = False)
       k = int((torch.mean(Mean, axis=0)[0]*dbn.top_layer_size)/100)
@@ -206,6 +206,14 @@ def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, d
       n_samples = math.ceil((sample_sz/2)*coeff/(len(Ian.intersections.keys())*n_steps_generation))
       _, visible_states = multiple_chimeras(Ian.model, classifier, sample_nr = n_samples, Ian = Ian, 
                   nr_gen_steps = n_steps_generation, topk = k, gather_visits = False, gather_visible = True)
+    
+    elif Type_gen == 'rand':
+      Mean, _ = Perc_H_act(dbn, LB_labels, gen_data_dictionary=dict_DBN_lBias_classic, 
+                          layer_of_interest=2, plot = False)
+      k = int((torch.mean(Mean, axis=0)[0]*dbn.top_layer_size)/100)
+      R_hidden = dbn.random_hidden_bias(n = k, size= LB_hidden.shape, discrete = True)
+      dict_DBN_R = dbn.generate_from_hidden(R_hidden, nr_gen_steps=n_steps_generation)
+      visible_states = dict_DBN_R['vis_states']
       
     # Adapt the shape of the visible states and sample the required amount
     # Vis_states : numbers of samples to generate x number of generation steps x size of the visible layer 

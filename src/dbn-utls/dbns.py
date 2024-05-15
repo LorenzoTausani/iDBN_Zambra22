@@ -233,12 +233,12 @@ class DBN(torch.nn.Module):
         LB_labels=LB_labels.repeat(n_reps)
         return LB_hidden, LB_labels
     
-    def random_hidden_bias(self, n: int, size: tuple, discrete = True):
+    def random_hidden_bias(self, topk: int, size: tuple, discrete = True):
         if discrete:
             hidden = torch.zeros(size, device = self.DEVICE)
-            for i in range(size[0]):
-                indices = random.sample(range(size[1]), n)
-                hidden[i, indices] = 1
+            for i in range(size[1]):
+                indices = random.sample(range(size[0]), topk)
+                hidden[indices,i] = 1
         else: 
             hidden = torch.rand(size, device = self.DEVICE)
         return hidden
