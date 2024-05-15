@@ -1,3 +1,4 @@
+import random
 import numpy as np
 import pandas as pd
 import torch
@@ -73,6 +74,48 @@ def get_relative_freq(valore, hist, bin_edges,numero_bin=20):
         return frequenza_relativa
     else:
         return 0.0  # Il valore è al di fuori dei bin
+    
+
+def sampling_gen_examples(results, prob_distr, desired_len_array=9984):
+    #get the cumulative sum of the probability distribution
+    cumulative_sum = np.cumsum(prob_distr)
+    # Generate an array of random numbers, 10 times the desired length
+    random_numbers = np.random.rand(desired_len_array * 10)
+    # Initialize an empty list to store the selected indices
+    index_selected_samples = []
+    # Initialize a counter
+    c = 0
+    # Loop until we have enough selected samples
+    while len(index_selected_samples) < desired_len_array:
+        # Get the current random number
+        r = random_numbers[c]
+        # Calculate the difference between the cumulative sum and the random number
+        delta = cumulative_sum - r
+        # Set all negative values in the difference array to infinity
+        delta[delta < 0] = np.inf
+        # Find the index of the smallest value in the difference array
+        index_p = delta.argmin()
+        # Find the indices in the results that match the probability at index_p
+        indexes_suitable_imgs = torch.nonzero(results == prob_distr[index_p]).squeeze()
+        # If there are multiple suitable indices
+        if indexes_suitable_imgs.numel() > 1:
+            # Select a random index from the suitable indices
+            random_index = random.choice(indexes_suitable_imgs.tolist())
+            # If the selected index is not already in the list of selected indices
+            if not(random_index in index_selected_samples):
+                # Add it to the list of selected indices
+                index_selected_samples.append(random_index)
+        # If there is only one suitable index
+        elif indexes_suitable_imgs.numel() == 1:
+            # If the selected index is not already in the list of selected indices
+            if not(random_index in index_selected_samples):
+                # Add it to the list of selected indices
+                index_selected_samples.append(int(indexes_suitable_imgs))
+        # Increment the counter
+        c = c + 1
+
+    # Return the list of selected indices
+    return index_selected_samples
 
 def raddrizza_lettere(data_train_retraining_ds,data_test_retraining_ds):
     #questi loop sono per raddrizzare le lettere

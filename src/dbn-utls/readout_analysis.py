@@ -7,7 +7,7 @@ import os
 import json
 from sklearn.metrics import accuracy_score
 from data_load import data_and_labels, load_NPZ_dataset
-from misc import get_relative_freq, relabel_09
+from misc import get_relative_freq, relabel_09, sampling_gen_examples
 from plots import hist_pixel_act
 import Study_generativity
 from Study_generativity import *
@@ -77,25 +77,6 @@ def readout_V_to_Hlast(dbn,train_dataset,test_dataset, DEVICE='cuda', existing_c
       
   return readout_acc_V, classifier_list
 
-def sampling_gen_examples(results, prob_distr, cumulative_sum,desired_len_array = 9984):
-  random_numbers = np.random.rand(desired_len_array*10)
-  index_selected_samples = []
-  c=0
-  while len(index_selected_samples)<desired_len_array:
-     r = random_numbers[c]
-     delta = cumulative_sum - r
-     delta[delta<0] = np.inf
-     index_p = (delta).argmin()
-     indexes_suitable_imgs = torch.nonzero(results == prob_distr[index_p]).squeeze()
-     if indexes_suitable_imgs.numel() > 1:
-      random_index = random.choice(indexes_suitable_imgs.tolist())
-      if not(random_index in index_selected_samples):
-        index_selected_samples.append(random_index)
-     elif indexes_suitable_imgs.numel() == 1:
-      if not(random_index in index_selected_samples):
-        index_selected_samples.append(int(indexes_suitable_imgs))
-     c=c+1
-  return index_selected_samples
 
 def random_selection_withinBatch(batch_size=128):
   # Creazione di una lista di tutti gli indici possibili da 0 a 127
@@ -136,16 +117,17 @@ def mixing_data_within_batch(half_MNIST,half_retraining_ds):
 
 def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, dbn=[], classifier=[], 
                         n_steps_generation = 10, ds_type = 'EMNIST', half_isgen=True, Type_gen = 'chimeras',
-                        H_type = 'det', selection_gen = False, correction_type = 'frequency'):
+                        H_type = 'det', correction_type = None):
   #Type_gen = 'chimeras'/'lbl_bias'/'mix'
+  #correction_type = 'frequency'/'sampling'/'rand'/None
   #NOTA: il labelling dell'EMNIST by class ha 62 labels: le cifre (0-9), lettere MAUSCOLE (10-36), lettere MINUSCOLE(38-62)
   #20,000 uppercase letters from the first 10 EMNIST classes.
   coeff = 1; batch_sz = 128; sample_sz = 20000
   nr_batches_retraining = round(sample_sz/batch_sz) 
   half_batches = round(nr_batches_retraining/2)
   half_ds_size = half_batches*batch_sz #i.e. 9984
-  
-  if selection_gen == True and half_isgen==True:
+  retraining_ds = {'train':train_dataset_retraining_ds}
+  if correction_type is not None and half_isgen==True:
     coeff = 2 #moltiplicatore. Un tempo stava a 2
     #This is the distribution of avg pixels active in the MNIST train dataset
     avg_pixels_active_TrainMNIST = torch.cat([torch.mean(batch, axis=1) for batch in MNIST_train_dataset['data']])
@@ -177,8 +159,9 @@ def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, d
       train_dataset_retraining_ds = {'data': train_data_retraining_ds[:nr_batches_retraining,:,:], 'labels': train_labels_retraining_ds[:nr_batches_retraining,:,:]}
       test_dataset_retraining_ds = {'data': test_data_retraining_ds, 'labels': test_labels_retraining_ds}
 
+    retraining_ds = {'train':train_dataset_retraining_ds, 'test':test_dataset_retraining_ds}
     if dbn==[]:
-        return train_dataset_retraining_ds,test_dataset_retraining_ds
+        return retraining_ds
     
   if not(half_isgen):
     half_MNIST = MNIST_train_dataset['data'][:half_batches,:,:].to('cuda')
@@ -210,35 +193,22 @@ def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, d
     indices = torch.randperm(sample_nr*n_steps_generation)[:math.ceil(half_ds_size*coeff)]
     # Sample the rows using the generated indices
     sampled_data = Vis_states[indices]    
-    return avg_pixels_active_TrainMNIST, sampled_data
     #TODO: GUARDARE E MIGLIORARE LA SELECTION SESSSION
-    if selection_gen == True and half_isgen==True:
+    if correction_type is not None and half_isgen==True:
       avg_activity_sampled_data =  torch.mean(sampled_data,axis = 1)
       hist, bin_edges = np.histogram(avg_pixels_active_TrainMNIST, bins=20, density=True)
-      sum_hist = np.sum(hist)
-      prob_distr = hist/sum_hist
-      cumulative_sum = np.cumsum(prob_distr)
-
-      results = torch.zeros_like(avg_activity_sampled_data)
-
-      for i in range(avg_activity_sampled_data.size(0)):
-          value = avg_activity_sampled_data[i].item()
-          results[i] = get_relative_freq(value, hist, bin_edges)
-          results[i] = results[i] / sum_hist if correction_type == 'sampling' else results[i]
-
+      sum_hist = np.sum(hist); prob_distr = hist/sum_hist
+      results = torch.tensor([get_relative_freq(av.item(), hist, bin_edges) for av in avg_activity_sampled_data], dtype = torch.float32)
+      results = results / sum_hist if correction_type == 'sampling' else results
       if correction_type == 'frequency':
         top_indices = torch.topk(results, k=half_ds_size).indices
       elif correction_type == 'sampling':
-        top_indices = torch.tensor(sampling_gen_examples(results, prob_distr, cumulative_sum,desired_len_array = half_ds_size + 1000)) #200 è per evitare di andare sotto 9984
-        top_indices = top_indices[:half_ds_size]
-        number_of_unique_elements = len(torch.unique(top_indices))
-        # Print in bold
-        print(f"\033[1mNumber of unique elements: {number_of_unique_elements}\033[0m")
-      else:
+        top_indices = torch.tensor(sampling_gen_examples(results, prob_distr,desired_len_array = half_ds_size + 1000)) [:half_ds_size] #1000 è per evitare di andare sotto 9984
+        print(f"\033[1mNumber of unique elements: {len(torch.unique(top_indices))}\033[0m")
+      elif correction_type == 'rand':
         top_indices = torch.tensor(np.where(results.cpu() != 0)[0])
         random_indices = torch.randperm(top_indices.size(0))
         top_indices = top_indices[random_indices[:half_ds_size]]
-
       sampled_data = sampled_data[top_indices]
       avg_activity_sampled_data_topK =  torch.mean(sampled_data,axis = 1)
       hist_pixel_act(avg_pixels_active_TrainMNIST,avg_activity_sampled_data,avg_activity_sampled_data_topK, n_bins = 20)
@@ -246,19 +216,11 @@ def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, d
     half_MNIST = sampled_data.view(half_batches, batch_sz, 784)
 
   half_retraining_ds = train_dataset_retraining_ds['data'][:half_batches,:,:].to('cuda')
-  #mix_retraining_ds_MNIST = torch.cat((half_MNIST, half_retraining_ds), dim=0)
   mix_retraining_ds_MNIST=mixing_data_within_batch(half_MNIST,half_retraining_ds)
   # Use the permutation to shuffle the examples of the dataset
   mix_retraining_ds_MNIST = mix_retraining_ds_MNIST[torch.randperm(nr_batches_retraining)]
-  try:
-    # Prova ad accedere alla variabile 'my_variable'.
-    print(test_dataset_retraining_ds)
-    return train_dataset_retraining_ds,test_dataset_retraining_ds,mix_retraining_ds_MNIST
-  except NameError:
-    # Gestisci l'eccezione se la variabile non esiste.
-    print("La variabile 'my_variable' non esiste.")
-    return mix_retraining_ds_MNIST
-  
+  retraining_ds['mixed'] = mix_retraining_ds_MNIST
+  return retraining_ds
 
 def get_ridge_classifiers(MNIST_Train_DS, MNIST_Test_DS, Force_relearning = True, last_layer_sz=1000):
   Zambra_folder_drive = '/content/gdrive/My Drive/ZAMBRA_DBN/'
@@ -302,7 +264,7 @@ def get_ridge_classifiers(MNIST_Train_DS, MNIST_Test_DS, Force_relearning = True
   return MNIST_classifier_list
 
 
-def relearning(retrain_ds_type = 'EMNIST', mixing_type =[], n_steps_generation=10, new_retrain_data = False, selection_gen = False, correction_type = 'frequency', l_par = 5,  last_layer_sz = 1000, H_type='det'):
+def relearning(retrain_ds_type = 'EMNIST', mixing_type =[], n_steps_generation=10, new_retrain_data = False, correction_type = 'frequency', l_par = 5,  last_layer_sz = 1000, H_type='det'):
     DEVICE='cuda'
     dbn,MNISTtrain_ds, MNISTtest_ds,classifier= tool_loader_ZAMBRA(DEVICE, only_data = False,Load_DBN_yn = 1, last_layer_sz=last_layer_sz)
     mixing_type_options = ['origMNIST', 'lbl_bias', 'chimeras','[]']
@@ -323,8 +285,11 @@ def relearning(retrain_ds_type = 'EMNIST', mixing_type =[], n_steps_generation=1
        half_MNIST_gen_option = False
     else:
        half_MNIST_gen_option = True
-
-    Retrain_ds,Retrain_test_ds,mix_retrain_ds = get_retraining_data(MNISTtrain_ds,{},dbn, classifier,n_steps_generation = n_steps_generation,  ds_type = retrain_ds_type, half_isgen=half_MNIST_gen_option, Type_gen = mixing_type,H_type = H_type, selection_gen = selection_gen, correction_type = correction_type)
+    retraining_ds = get_retraining_data(MNISTtrain_ds,{},dbn, classifier,
+                    n_steps_generation = n_steps_generation,  ds_type = retrain_ds_type,
+                    half_isgen=half_MNIST_gen_option, Type_gen = mixing_type,H_type = H_type, correction_type = correction_type)
+    
+    Retrain_ds,Retrain_test_ds,mix_retrain_ds = get_retraining_data(MNISTtrain_ds,{},dbn, classifier,n_steps_generation = n_steps_generation,  ds_type = retrain_ds_type, half_isgen=half_MNIST_gen_option, Type_gen = mixing_type,H_type = H_type, correction_type = correction_type)
     MNIST_classifier_list= get_ridge_classifiers(MNISTtrain_ds, MNISTtest_ds,Force_relearning = False, last_layer_sz=last_layer_sz)
 
     
@@ -368,7 +333,7 @@ def relearning(retrain_ds_type = 'EMNIST', mixing_type =[], n_steps_generation=1
     for iteration in range(nr_iter_training):
         for ep in range(inner_loop_epochs):
           if new_retrain_data == True:
-            mix_retrain_ds = get_retraining_data(MNISTtrain_ds,Retrain_ds,dbn, classifier,n_steps_generation = n_steps_generation,  ds_type = retrain_ds_type, half_isgen=half_MNIST_gen_option, Type_gen = mixing_type,H_type =H_type, selection_gen = selection_gen, correction_type = correction_type)
+            mix_retrain_ds = get_retraining_data(MNISTtrain_ds,Retrain_ds,dbn, classifier,n_steps_generation = n_steps_generation,  ds_type = retrain_ds_type, half_isgen=half_MNIST_gen_option, Type_gen = mixing_type,H_type =H_type, correction_type = correction_type)
             Xtrain = mix_retrain_ds.to(DEVICE)
             print(ep)
           dbn.train(Xtrain, Xtest, Ytrain, Ytest, LPARAMS, readout = READOUT, num_discr = NUM_DISCR)
@@ -567,7 +532,7 @@ def readout_comparison(dbn, classifier,MNIST_train_dataset,MNIST_test_dataset,
     #only if your mixing type is not origMNIST
     half_MNIST_gen_option = mix_type != 'origMNIST'
 
-    Retrain_ds,Retrain_test_ds,mix_retrain_ds = get_retraining_data(MNIST_train_dataset,{},dbn, classifier,100,  ds_type = retr_DS, half_isgen=half_MNIST_gen_option, Type_gen = mix_type, selection_gen = False, correction_type = 'frequency')
+    Retrain_ds,Retrain_test_ds,mix_retrain_ds = get_retraining_data(MNIST_train_dataset,{},dbn, classifier,100,  ds_type = retr_DS, half_isgen=half_MNIST_gen_option, Type_gen = mix_type, correction_type = 'frequency')
 
     if mix_type=='[]':
       R = readout_epoch0_1andHalfBatches(dbn,Retrain_ds,Retrain_test_ds,MNIST_train_dataset,MNIST_test_dataset, mix_ds = [])
@@ -580,7 +545,7 @@ def readout_comparison(dbn, classifier,MNIST_train_dataset,MNIST_test_dataset,
     if mix_type==[]:
       mix_type='[]'
 
-    Readout_last_layer_MNIST, Readout_last_layer_RETRAINING_DS,_ = relearning(retrain_ds_type = retr_DS, mixing_type =mix_type, n_steps_generation=100, new_retrain_data = new_retrain_dataV[id_mix], selection_gen = False, correction_type = 'other', l_par = 1, last_layer_sz=1000, H_type = H_type_it)
+    Readout_last_layer_MNIST, Readout_last_layer_RETRAINING_DS,_ = relearning(retrain_ds_type = retr_DS, mixing_type =mix_type, n_steps_generation=100, new_retrain_data = new_retrain_dataV[id_mix], correction_type = 'other', l_par = 1, last_layer_sz=1000, H_type = H_type_it)
     Readouts[3:,id_mix] = Readout_last_layer_MNIST
     Readouts[3:,id_mix+len(mixing_type_options)] = Readout_last_layer_RETRAINING_DS
 
