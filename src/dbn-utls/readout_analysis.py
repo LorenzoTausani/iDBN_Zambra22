@@ -71,7 +71,7 @@ def readout_V_to_Hlast(dbn,train_dataset,test_dataset, DEVICE='cuda', existing_c
         readout_acc, classifier = rbm.get_readout(_Xtrain[:upper, :, :], _Xtest, Ytrain[:upper, :, :], Ytest)
         classifier_list.append(classifier)
       else:
-        readout_acc = ridge_readout(existing_classifier_list[rbm_idx+1], Xtrain, Xtest, Ytest)
+        readout_acc = ridge_readout(existing_classifier_list[rbm_idx+1], _Xtrain, _Xtest, Ytest)
       print(f'Readout accuracy = {readout_acc*100:.2f}')
       readout_acc_V.append(readout_acc)
       #the hidden representations of the current layer will be used as 
