@@ -1,3 +1,4 @@
+from collections import defaultdict
 import random
 from tqdm import tqdm
 import torch
@@ -211,7 +212,7 @@ def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, d
       Mean, _ = Perc_H_act(dbn, LB_labels, gen_data_dictionary=dict_DBN_lBias_classic, 
                           layer_of_interest=2, plot = False)
       k = int((torch.mean(Mean, axis=0)[0]*dbn.top_layer_size)/100)
-      R_hidden = dbn.random_hidden_bias(n = k, size= LB_hidden.shape, discrete = True)
+      R_hidden = dbn.random_hidden_bias(topk = k, size= LB_hidden.shape, discrete = True)
       dict_DBN_R = dbn.generate_from_hidden(R_hidden, nr_gen_steps=n_steps_generation)
       visible_states = dict_DBN_R['vis_states']
       
@@ -260,10 +261,15 @@ def relearning(retrain_ds_type = 'EMNIST', mixing_type: MixingType = '[]', n_ste
     #retrain_ds_type = 'EMNIST'/'fMNIST'
     #load necessary items
     DEVICE='cuda'; DATASET_ID='MNIST'; Zambra_folder_drive = '/content/gdrive/My Drive/ZAMBRA_DBN/'
+    save_dir = os.path.join(Zambra_folder_drive, 'relearning_exps')
+    if not os.path.exists(save_dir):
+      os.makedirs(save_dir)
     dbn,MNISTtrain_ds, MNISTtest_ds,classifier= tool_loader_ZAMBRA(DEVICE, only_data = False,Load_DBN_yn = 1, 
                                                                   last_layer_sz=last_layer_sz)
-    type_retrain = 'sequential' if mixing_type=='[]' else 'interleaved'
-    type_mix = 'mix_'+mixing_type
+    type_retrain = 'seq' if mixing_type=='[]' else f'int_{mixing_type}'
+    digit_key = f"{DATASET_ID}_{type_retrain}_H{H_type}"
+    retrainDS_key = f"{retrain_ds_type}_{type_retrain}_H{H_type}"
+    xlsx_fn = os.path.join(save_dir, f'relearning_rout_{retrain_ds_type}_{type_retrain}_H{H_type}.xlsx')
     retraining_ds = get_retraining_data(MNISTtrain_ds,{},dbn, classifier,
                     n_steps_generation = n_steps_generation,  ds_type = retrain_ds_type,
                     Type_gen = mixing_type,H_type = H_type, correction_type = correction_type)
@@ -289,7 +295,7 @@ def relearning(retrain_ds_type = 'EMNIST', mixing_type: MixingType = '[]', n_ste
     #store the readouts before retraining (i.e. trained only with MNIST)
     readout_acc_V_DIGITS,_ = readout_V_to_Hlast(dbn,MNISTtrain_ds,MNISTtest_ds,existing_classifier_list = MNIST_classifier_list)
     readout_acc_V_RETRAIN_DS,_ = readout_V_to_Hlast(dbn,retraining_ds['train'],retraining_ds['test']) 
-    readout = {0: {'digits':readout_acc_V_DIGITS, 'retrain_ds':readout_acc_V_RETRAIN_DS}}
+    readout = {0: {digit_key:readout_acc_V_DIGITS, retrainDS_key:readout_acc_V_RETRAIN_DS}}
     
     for r_idx in range(n_readouts):
       for _ in range(train_per_readout):
@@ -303,9 +309,15 @@ def relearning(retrain_ds_type = 'EMNIST', mixing_type: MixingType = '[]', n_ste
       readout_acc_V_DIGITS,_ = readout_V_to_Hlast(dbn,MNISTtrain_ds,MNISTtest_ds,existing_classifier_list = MNIST_classifier_list)
       readout_acc_V_RETRAIN_DS,_ = readout_V_to_Hlast(dbn,retraining_ds['train'],retraining_ds['test'])
       current_retraining_epoch = (r_idx+1)*train_per_readout*LPARAMS['EPOCHS']
-      readout[current_retraining_epoch] = {'digits':readout_acc_V_DIGITS, 'retrain_ds':readout_acc_V_RETRAIN_DS}
-
-    return readout, dbn
+      readout[current_retraining_epoch] = {digit_key:readout_acc_V_DIGITS, retrainDS_key:readout_acc_V_RETRAIN_DS}
+    relearning_dict = defaultdict(list)
+    for k,v in readout.items():
+      relearning_dict['retrain epoch'].append(k)
+      for k,v in v.items():
+        relearning_dict[k].append(v[-1])
+    relearning_df = pd.DataFrame(relearning_dict)
+    relearning_df.to_excel(xlsx_fn)
+    return relearning_df, dbn
 
 
 def get_prototypes(Train_dataset,nr_categories=26):
