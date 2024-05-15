@@ -173,7 +173,7 @@ class DBN(torch.nn.Module):
     def invW4LB(self,train_dataset, L=[]):
         lbls = train_dataset['labels'].view(-1) # Flatten the labels in the training dataset
         # Get the number of batches and batch size from the training dataset
-        nr_batches, BATCH_SIZE = train_dataset['data'].shape
+        nr_batches, BATCH_SIZE,_ = train_dataset['data'].shape
 
         # If L is not provided, create a one-hot encoding matrix L for each label (i.e. num classes x examples)
         if L==[]:
