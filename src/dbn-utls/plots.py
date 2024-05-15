@@ -208,10 +208,10 @@ def plot_relearning(Readouts, yl = [0.75, 1],lab_sz = 50, leg_on =1,
     ax.set_ylim(yl) 
     # Create the legend
     if legend_labels == []:
-      legend_labels = ['Sequential learning', 'Interleaved learning - experience replay',  'Interleaved learning - generative replay']
+        legend_labels = ['Sequential learning', 'Interleaved learning - experience replay',  'Interleaved learning - generative replay']
     legend_handles = [plt.Line2D([], [], color='black', linestyle=style) for style in ['-', '--', ':']]
     if leg_on ==1:
-      ax.legend(legend_handles, legend_labels, loc='upper center', bbox_to_anchor=(0.5, -0.15), fontsize=lab_sz, ncol=len(legend_labels)//2)    
+        ax.legend(legend_handles, legend_labels, loc='upper center', bbox_to_anchor=(0.5, -0.15), fontsize=lab_sz, ncol=len(legend_labels)//2)    
     # Increase tick label font size
     ax.tick_params(labelsize=lab_sz)    
     # Show the plot

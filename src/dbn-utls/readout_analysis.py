@@ -8,7 +8,7 @@ import json
 from sklearn.metrics import accuracy_score
 from data_load import data_and_labels, load_NPZ_dataset, tool_loader_ZAMBRA
 from misc import get_relative_freq, relabel_09, sampling_gen_examples
-from plots import hist_pixel_act
+from plots import hist_pixel_act, plot_relearning
 import Study_generativity
 from Study_generativity import *
 from matplotlib.ticker import StrMethodFormatter
@@ -359,10 +359,7 @@ for lp in EMNIST_prototypes:
   plt.imshow(image.cpu(), cmap='gray')
   plt.show()
   c=c+1
-
-
 '''
-
 
 def readout_epoch0_1andHalfBatches(dbn,train_dataset_retraining_ds, test_dataset_retraining_ds,train_dataset,test_dataset, mix_ds = []):
   DEVICE = 'cuda'
