@@ -58,7 +58,7 @@ class VGGBlock(nn.Module):
 class VGG16(nn.Module):
 
   def __init__(self, input_size, num_classes=11,batch_norm=False):
-    super(VGG16, self).__init__()
+    super().__init__()
 
     self.in_channels,self.in_width,self.in_height = input_size
 
