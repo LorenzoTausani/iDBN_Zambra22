@@ -207,7 +207,7 @@ def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, d
     Vis_states = visible_states.permute(0, 2, 1)
     sample_nr,_, imgvec_len = Vis_states.shape
     Vis_states = Vis_states.reshape(sample_nr*n_steps_generation,imgvec_len) #Vis_states.shape[2]=784
-    indices = torch.randperm(sample_nr)[:math.ceil(half_ds_size*coeff)]
+    indices = torch.randperm(sample_nr*n_steps_generation)[:math.ceil(half_ds_size*coeff)]
     # Sample the rows using the generated indices
     sampled_data = Vis_states[indices]    
     return avg_pixels_active_TrainMNIST, sampled_data
