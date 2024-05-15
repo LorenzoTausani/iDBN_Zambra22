@@ -210,6 +210,7 @@ def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, d
     indices = torch.randperm(sample_nr)[:math.ceil(half_ds_size*coeff)]
     # Sample the rows using the generated indices
     sampled_data = Vis_states[indices]    
+    return avg_pixels_active_TrainMNIST, sampled_data
     #TODO: GUARDARE E MIGLIORARE LA SELECTION SESSSION
     if selection_gen == True and half_isgen==True:
       avg_activity_sampled_data =  torch.mean(sampled_data,axis = 1)
