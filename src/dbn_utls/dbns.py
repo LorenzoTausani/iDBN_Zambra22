@@ -1,6 +1,6 @@
 import os
 import torch
-import rbms
+import src.dbn_utls.rbms as rbms
 import random
 from tqdm import tqdm
 

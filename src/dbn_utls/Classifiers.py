@@ -10,7 +10,7 @@ import torchvision.models as models
 import pandas as pd
 import numpy as np
 
-from plots import Cl_plot, Cl_plot_classwise, StateTimePlot, Transition_mat_plot
+from src.dbn_utls.plots import Cl_plot, Cl_plot_classwise, StateTimePlot, Transition_mat_plot
 
 class VGGBlock(nn.Module):
     def __init__(self, in_channels, out_channels,batch_norm=False):

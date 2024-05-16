@@ -7,11 +7,10 @@ import pickle
 import os
 import json
 from sklearn.metrics import accuracy_score
-from data_load import data_and_labels, load_NPZ_dataset, tool_loader_ZAMBRA
-from misc import get_relative_freq, relabel_09, sampling_gen_examples
-from plots import hist_pixel_act, plot_relearning
-import Study_generativity
-from Study_generativity import *
+from src.dbn_utls.data_load import data_and_labels, load_NPZ_dataset, tool_loader_ZAMBRA, root_dir
+from src.dbn_utls.misc import get_relative_freq, relabel_09, sampling_gen_examples
+from src.dbn_utls.plots import hist_pixel_act, plot_relearning
+from src.dbn_utls.Study_generativity import *
 from matplotlib.ticker import StrMethodFormatter
 from typing import Literal
 MixingType = Literal['origMNIST', 'lbl_bias', 'chimeras', '[]']
@@ -83,8 +82,7 @@ def readout_V_to_Hlast(dbn,train_dataset,test_dataset, DEVICE='cuda', existing_c
   return readout_acc_V, classifier_list
 
 def get_ridge_classifiers(Force_relearning = True, last_layer_sz=1000):
-  Zambra_folder_drive = '/content/gdrive/My Drive/ZAMBRA_DBN/'
-  MNIST_rc_file= os.path.join(Zambra_folder_drive,'MNIST_ridge_classifiers'+str(last_layer_sz)+'.pkl')
+  MNIST_rc_file= os.path.join(root_dir,'MNIST_ridge_classifiers'+str(last_layer_sz)+'.pkl')
   print("\033[1m Make sure that your iDBN was trained only with MNIST for 100 epochs \033[0m")
   DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
   if not(os.path.exists(MNIST_rc_file)) or Force_relearning:
@@ -260,8 +258,8 @@ def relearning(retrain_ds_type = 'EMNIST', mixing_type: MixingType = '[]', n_ste
               new_rdata_epochs: int|None = None, last_layer_sz = 1000, H_type='det'):
     #retrain_ds_type = 'EMNIST'/'fMNIST'
     #load necessary items
-    DEVICE='cuda'; DATASET_ID='MNIST'; Zambra_folder_drive = '/content/gdrive/My Drive/ZAMBRA_DBN/'
-    save_dir = os.path.join(Zambra_folder_drive, 'relearning_exps')
+    DEVICE='cuda'; DATASET_ID='MNIST'
+    save_dir = os.path.join(root_dir, 'relearning_exps')
     if not os.path.exists(save_dir):
       os.makedirs(save_dir)
     dbn,MNISTtrain_ds, MNISTtest_ds,classifier= tool_loader_ZAMBRA(DEVICE, only_data = False,Load_DBN_yn = 1, 
@@ -276,9 +274,9 @@ def relearning(retrain_ds_type = 'EMNIST', mixing_type: MixingType = '[]', n_ste
     
     MNIST_classifier_list= get_ridge_classifiers(Force_relearning = False, last_layer_sz=last_layer_sz)
     
-    with open(os.path.join(Zambra_folder_drive, f'lparams-{DATASET_ID.lower()}.json'), 'r') as filestream:
+    with open(os.path.join(root_dir, f'lparams-{DATASET_ID.lower()}.json'), 'r') as filestream:
         LPARAMS = json.load(filestream)
-    with open(os.path.join(Zambra_folder_drive, 'cparams.json'), 'r') as filestream:
+    with open(os.path.join(root_dir, 'cparams.json'), 'r') as filestream:
         CPARAMS = json.load(filestream)
         
     n_readouts = math.ceil(relearning_epochs/readout_interleave)
@@ -384,8 +382,7 @@ for lp in EMNIST_prototypes:
 def readout_epoch0_1andHalfBatches(dbn,train_dataset_retraining_ds, test_dataset_retraining_ds,train_dataset,test_dataset, mix_ds = []):
   DEVICE = 'cuda'
   DATASET_ID = 'MNIST'
-  Zambra_folder_drive = '/content/gdrive/My Drive/ZAMBRA_DBN/'
-  with open(os.path.join(Zambra_folder_drive, f'lparams-{DATASET_ID.lower()}.json'), 'r') as filestream:
+  with open(os.path.join(root_dir, f'lparams-{DATASET_ID.lower()}.json'), 'r') as filestream:
     LPARAMS = json.load(filestream)
   Xtest  = test_dataset_retraining_ds['data'].to(DEVICE)
   Ytest  = test_dataset_retraining_ds['labels'].to(DEVICE)
@@ -466,11 +463,10 @@ def readout_comparison(dbn, classifier,MNIST_train_dataset,MNIST_test_dataset,
   # Convert NumPy array to Pandas DataFrame
   df = pd.DataFrame(Readouts, columns=columns)
   
-  Zambra_folder_drive = '/content/gdrive/My Drive/ZAMBRA_DBN/'
   # Save DataFrame to Excel file
   tipo = ['M'+D_names[m] + '_H' + h +'_'+ nR for m, h,nR in zip(mixing_type_options, H_type,new_retrain_dataV_list)]
   tipo = '_'.join(tipo)
-  file_path = os.path.join(Zambra_folder_drive, "Readouts_" + retr_DS + tipo + ".xlsx")
+  file_path = os.path.join(root_dir, "Readouts_" + retr_DS + tipo + ".xlsx")
 
   df.to_excel(file_path, index=False)
   

@@ -1,10 +1,50 @@
+import json
 import random
+from typing import Any
 import numpy as np
 import pandas as pd
 import torch
-from google.colab import files
 from torch.utils.data import Dataset
 import math
+
+def is_running_in_colab():
+    try:
+        from google.colab import drive
+        return True
+    except:
+        return False
+    
+def read_json(path: str) -> dict[str, Any]:
+    '''
+    Read JSON data from a file.
+
+    :param path: The path to the JSON file.
+    :type path: str
+    :raises FileNotFoundError: If the specified file is not found.
+    :return: The JSON data read from the file.
+    :rtype: Dict[str, Any]
+    '''
+    
+    try:
+        with open(path, 'r') as f:
+            data = json.load(f)
+        return data
+    except FileNotFoundError:
+        raise FileNotFoundError(f'File not found at path: {path}')
+
+
+def set_root_dir():
+    global root_dir
+    global is_colab
+    global DEVICE
+    is_colab = is_running_in_colab()
+    if is_colab:
+        from google.colab import drive
+        drive.mount('/content/gdrive')
+    roots = read_json(path = "roots.json")
+    root_dir = roots["root_colab"] if is_colab else roots["root_local"]
+    DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+    return root_dir,DEVICE,is_colab
 
 #function for computing SEM
 def SEM(measure):
@@ -20,7 +60,9 @@ def save_mat_xlsx(my_array, filename='my_res.xlsx'):
     # save the dataframe as an excel file
     my_dataframe.to_excel(filename, index=False)
     # download the file
-    files.download(filename)
+    if is_running_in_colab():
+        from google.colab import files
+        files.download(filename)
 
 
 def reshape_data(train_ds, batch_sz_real, batch_sz):
@@ -133,3 +175,5 @@ def raddrizza_lettere(data_train_retraining_ds,data_test_retraining_ds):
         data_test_retraining_L.append((image,item[1]))
     data_test_retraining_ds = data_test_retraining_L
     data_train_retraining_ds = data_train_retraining_L
+    
+    

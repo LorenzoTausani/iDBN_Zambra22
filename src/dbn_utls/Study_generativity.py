@@ -2,18 +2,16 @@ from tqdm import tqdm #tqdm is a Python library that provides a way to create pr
 #making it easier to track the progress of lengthy operations.
 import numpy as np
 import torch
-from dbns import *
+from src.dbn_utls.dbns import *
 import scipy
 import matplotlib.pyplot as plt
 from matplotlib import cm
 import math
-import Classifiers
-import methods
-from Classifiers import *
-from methods import *
+from src.dbn_utls.Classifiers import *
+from src.dbn_utls.methods import *
 from itertools import combinations
-from misc import SEM, save_mat_xlsx
-from data_load import Multiclass_dataset
+from src.dbn_utls.misc import SEM, save_mat_xlsx
+from src.dbn_utls.data_load import Multiclass_dataset
 import seaborn as sns
 
 class Intersection_analysis:
