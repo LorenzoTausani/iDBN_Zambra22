@@ -1,4 +1,5 @@
 from collections import defaultdict
+from functools import reduce
 import random
 from tqdm import tqdm
 import torch
@@ -7,7 +8,7 @@ import pickle
 import os
 import json
 from sklearn.metrics import accuracy_score
-from src.dbn_utls.data_load import data_and_labels, load_NPZ_dataset, tool_loader_ZAMBRA, root_dir
+from src.dbn_utls.data_load import data_and_labels, load_NPZ_dataset, tool_loader_ZAMBRA, root_dir,DEVICE
 from src.dbn_utls.misc import get_relative_freq, relabel_09, sampling_gen_examples
 from src.dbn_utls.plots import hist_pixel_act, plot_relearning
 from src.dbn_utls.Study_generativity import *
@@ -81,6 +82,32 @@ def readout_V_to_Hlast(dbn,train_dataset,test_dataset, DEVICE='cuda', existing_c
       
   return readout_acc_V, classifier_list
 
+def epoch1_readout(retraining_ds,MNIST_train_dataset,MNIST_test_dataset, train_with_mix = True, nr_b = 1):
+    #load parameters for dbn training
+    DATASET_ID = 'MNIST'
+    with open(os.path.join(root_dir, f'lparams-{DATASET_ID.lower()}.json'), 'r') as filestream:
+        LPARAMS = json.load(filestream)
+    LPARAMS['EPOCHS'] = 1
+    #load test data and labels
+    Xtest  = retraining_ds['test']['data'].to(DEVICE)
+    Ytest  = retraining_ds['test']['labels'].to(DEVICE)
+    #load the classifiers for the readout of the MNIST dataset
+    MNIST_classifier_list= get_ridge_classifiers(Force_relearning = False)
+    #batches_sz will contain the number of batches to be used for the retraining (1 epoch only)
+
+    dbn,_, _,_= tool_loader_ZAMBRA(DEVICE, only_data = False,last_layer_sz=1000, Load_DBN_yn = 1)
+    
+    train_ds = {'data':retraining_ds['train']['data'][:nr_b,:,:],'labels':retraining_ds['train']['labels'][:nr_b,:,:]}
+    mixed_ds = {'data':retraining_ds['mixed'][:nr_b,:,:],
+                'labels':retraining_ds['mixed'][:nr_b,:,:]} if not(train_with_mix) else None
+    #train the dbn either with the new daatset or with the mixed dataset (train_with_mix = True)
+    dbn.train(train_ds['data'], Xtest, train_ds['labels'], Ytest, LPARAMS) if mixed_ds == None else dbn.train(mixed_ds['data'], Xtest, mixed_ds['labels'], Ytest, LPARAMS)
+    #compute the readouts on the new dataset and on the MNIST dataset
+    readout_acc_V_NEWDS, _ = readout_V_to_Hlast(dbn,train_ds,retraining_ds['test'])
+    readout_acc_V_DIGITS,_ = readout_V_to_Hlast(dbn,MNIST_train_dataset,MNIST_test_dataset,existing_classifier_list = MNIST_classifier_list)
+    current_retraining_epoch = nr_b/retraining_ds['train']['data'].shape[0]
+    return readout_acc_V_NEWDS, readout_acc_V_DIGITS, current_retraining_epoch
+
 def get_ridge_classifiers(Force_relearning = True, last_layer_sz=1000):
   MNIST_rc_file= os.path.join(root_dir,'MNIST_ridge_classifiers'+str(last_layer_sz)+'.pkl')
   print("\033[1m Make sure that your iDBN was trained only with MNIST for 100 epochs \033[0m")
@@ -136,7 +163,7 @@ def mixing_data_within_batch(half_MNIST,half_retraining_ds):
   return mix_retraining_ds_MNIST
   
 
-def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, dbn=[], classifier=[], 
+def get_retraining_data(MNIST_train_dataset, train_ds_retraining = {}, dbn=[], classifier=[], 
                         n_steps_generation = 10, ds_type = 'EMNIST', Type_gen = None,
                         H_type = 'det', correction_type = None):
   #Type_gen = 'chimeras'/'lbl_bias'/None
@@ -147,7 +174,7 @@ def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, d
   nr_batches_retraining = round(sample_sz/batch_sz) 
   half_batches = round(nr_batches_retraining/2)
   half_ds_size = half_batches*batch_sz #i.e. 9984
-  retraining_ds = {'train':train_dataset_retraining_ds}
+  retraining_ds = {'train':train_ds_retraining}
   if correction_type is not None and Type_gen in ['chimeras','lbl_bias']:
     coeff = 2 #moltiplicatore. Un tempo stava a 2
     #This is the distribution of avg pixels active in the MNIST train dataset
@@ -155,10 +182,10 @@ def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, d
 
   root = '/content/gdrive/My Drive/ZAMBRA_DBN/'
   #load EMNIST byclass data
-  if not(bool(train_dataset_retraining_ds)):
+  if not(bool(train_ds_retraining)):
     try:
-      train_dataset_retraining_ds = load_NPZ_dataset(os.path.join(root,'dataset_dicts',f'train_dataset_{ds_type}.npz'), nr_batches_retraining)
-      test_dataset_retraining_ds = load_NPZ_dataset(os.path.join(root,'dataset_dicts',f'test_dataset_{ds_type}.npz'))
+      train_ds_retraining = load_NPZ_dataset(os.path.join(root,'dataset_dicts',f'train_dataset_{ds_type}.npz'), nr_batches_retraining)
+      test_ds_retraining = load_NPZ_dataset(os.path.join(root,'dataset_dicts',f'test_dataset_{ds_type}.npz'))
     except:
       transform =transforms.Compose([transforms.ToTensor()])
       if ds_type == 'EMNIST':
@@ -177,10 +204,10 @@ def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, d
       train_data_retraining_ds, train_labels_retraining_ds = data_and_labels(data_train_retraining_ds, BATCH_SIZE=batch_sz,NUM_FEAT=np.int32(28*28),DATASET_ID='MNIST',n_cols_labels=1)
       test_data_retraining_ds, test_labels_retraining_ds = data_and_labels(data_test_retraining_ds, BATCH_SIZE=batch_sz,NUM_FEAT=np.int32(28*28),DATASET_ID='MNIST',n_cols_labels=1)
       #i select just 20000 examples (19968 per l'esattezza)
-      train_dataset_retraining_ds = {'data': train_data_retraining_ds[:nr_batches_retraining,:,:], 'labels': train_labels_retraining_ds[:nr_batches_retraining,:,:]}
-      test_dataset_retraining_ds = {'data': test_data_retraining_ds, 'labels': test_labels_retraining_ds}
+      train_ds_retraining = {'data': train_data_retraining_ds[:nr_batches_retraining,:,:], 'labels': train_labels_retraining_ds[:nr_batches_retraining,:,:]}
+      test_ds_retraining = {'data': test_data_retraining_ds, 'labels': test_labels_retraining_ds}
 
-    retraining_ds = {'train':train_dataset_retraining_ds, 'test':test_dataset_retraining_ds}
+    retraining_ds = {'train':train_ds_retraining, 'test':test_ds_retraining}
     if dbn==[]:
         return retraining_ds
     
@@ -244,7 +271,7 @@ def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, d
 
     half_MNIST = sampled_data.view(half_batches, batch_sz, 784)
 
-  half_retraining_ds = train_dataset_retraining_ds['data'][:half_batches,:,:].to('cuda')
+  half_retraining_ds = train_ds_retraining['data'][:half_batches,:,:].to('cuda')
   mix_retraining_ds_MNIST=mixing_data_within_batch(half_MNIST,half_retraining_ds)
   # Use the permutation to shuffle the examples of the dataset
   mix_retraining_ds_MNIST = mix_retraining_ds_MNIST[torch.randperm(nr_batches_retraining)]
@@ -253,9 +280,10 @@ def get_retraining_data(MNIST_train_dataset, train_dataset_retraining_ds = {}, d
 
 # -- RELEARNING --
 
+
 def relearning(retrain_ds_type = 'EMNIST', mixing_type: MixingType = '[]', n_steps_generation=10, 
               correction_type = 'frequency', relearning_epochs = 50, readout_interleave = 5,
-              new_rdata_epochs: int|None = None, last_layer_sz = 1000, H_type='det'):
+              new_rdata_epochs: int|None = None, last_layer_sz = 1000, H_type='det', ep_1_equisp_batches = 3):
     #retrain_ds_type = 'EMNIST'/'fMNIST'
     #load necessary items
     DEVICE='cuda'; DATASET_ID='MNIST'
@@ -294,7 +322,15 @@ def relearning(retrain_ds_type = 'EMNIST', mixing_type: MixingType = '[]', n_ste
     readout_acc_V_DIGITS,_ = readout_V_to_Hlast(dbn,MNISTtrain_ds,MNISTtest_ds,existing_classifier_list = MNIST_classifier_list)
     readout_acc_V_RETRAIN_DS,_ = readout_V_to_Hlast(dbn,retraining_ds['train'],retraining_ds['test']) 
     readout = {0: {digit_key:readout_acc_V_DIGITS, retrainDS_key:readout_acc_V_RETRAIN_DS}}
-    
+    #first epoch readout
+    ep_1_batches = [1,78,156]
+    for b_nr in ep_1_batches:
+      readout_acc_V_RETRAIN_DS, readout_acc_V_DIGITS, current_retraining_epoch = epoch1_readout(retraining_ds,MNISTtrain_ds,
+                                                                                  MNISTtest_ds,train_with_mix = True, nr_b = b_nr)
+      readout[current_retraining_epoch] = {digit_key:readout_acc_V_DIGITS, retrainDS_key:readout_acc_V_RETRAIN_DS}
+    #reload to avoid conflicts with 1st epoch relearning, that follows a different implementation
+    dbn,_, _,_= tool_loader_ZAMBRA(DEVICE, only_data = False,Load_DBN_yn = 1, 
+                                                                  last_layer_sz=last_layer_sz)
     for r_idx in range(n_readouts):
       for _ in range(train_per_readout):
         if new_rdata_epochs is not None:
@@ -341,7 +377,7 @@ def get_prototypes(Train_dataset,nr_categories=26):
 '''
 analysis prototypes:
 MNIST_prototypes = get_prototypes(train_dataset,nr_categories=10)
-EMNIST_prototypes = get_prototypes(train_dataset_retraining_ds,nr_categories=26)
+EMNIST_prototypes = get_prototypes(train_ds_retraining,nr_categories=26)
 
 Euclidean_dist_MNIST_EMNIST = torch.zeros(MNIST_prototypes.shape[0],EMNIST_prototypes.shape[0])
 
@@ -379,99 +415,29 @@ for lp in EMNIST_prototypes:
   c=c+1
 '''
 
-def readout_epoch0_1andHalfBatches(dbn,train_dataset_retraining_ds, test_dataset_retraining_ds,train_dataset,test_dataset, mix_ds = []):
-  DEVICE = 'cuda'
-  DATASET_ID = 'MNIST'
-  with open(os.path.join(root_dir, f'lparams-{DATASET_ID.lower()}.json'), 'r') as filestream:
-    LPARAMS = json.load(filestream)
-  Xtest  = test_dataset_retraining_ds['data'].to(DEVICE)
-  Ytest  = test_dataset_retraining_ds['labels'].to(DEVICE)
-  MNIST_classifier_list= get_ridge_classifiers(Force_relearning = False)
-
-  R_list=[]
-  if mix_ds == []:
-    n_in = [1,train_dataset_retraining_ds['data'].shape[0]//2,train_dataset_retraining_ds['data'].shape[0]]
-  else:
-    n_in = [1,mix_ds.shape[0]//2,mix_ds.shape[0]]
-  LPARAMS['EPOCHS'] = 1
-  for i in n_in:
-    dbn,_, _,_= tool_loader_ZAMBRA(DEVICE, only_data = False,last_layer_sz=1000, Load_DBN_yn = 1)
-
-    if mix_ds ==[]:
-      mb_data = train_dataset_retraining_ds['data'][:i,:,:]
-      mb_lbls = train_dataset_retraining_ds['labels'][:i,:,:]
-      mb_dataset = {'data':mb_data,'labels':mb_lbls}
-
-    else:
-      mb_data = mix_ds[:i,:,:]
-      mb_lbls = mix_ds[:i,:,:]
-
-
-    dbn.train(mb_data, Xtest, mb_lbls, Ytest, LPARAMS, readout = False, num_discr = False)
-
-    if not(mix_ds ==[]):
-      mb_data = train_dataset_retraining_ds['data'][:i,:,:]
-      mb_lbls = train_dataset_retraining_ds['labels'][:i,:,:]
-      mb_dataset = {'data':mb_data,'labels':mb_lbls}
-    readout_acc_V, classifier_list = readout_V_to_Hlast(dbn,mb_dataset,test_dataset_retraining_ds)
-
-    readout_acc_V_DIGITS,_ = readout_V_to_Hlast(dbn,train_dataset,test_dataset,existing_classifier_list = MNIST_classifier_list)
-    print(readout_acc_V)
-    R_list.append(readout_acc_V[-1])
-    R_list.append(readout_acc_V_DIGITS[-1])
-  return R_list
-
-def readout_comparison(dbn, classifier,MNIST_train_dataset,MNIST_test_dataset,
-                      mixing_type_options = ['[]','origMNIST', 'chimeras'], retr_DS = 'EMNIST', 
-                      H_type = ['det', 'det', 'det'], new_retrain_dataV = [False, False, False]):
+def readout_comparison(mixing_types = ['[]','origMNIST', 'chimeras'], retr_DS = 'fMNIST', 
+                      H_type = ['det', 'det', 'det'], new_retrain_dataV = [None, None, None]):
     
-  if not isinstance(H_type, list): H_type = [H_type] * len(mixing_type_options)
-  if not isinstance(new_retrain_dataV, list): new_retrain_dataV = [new_retrain_dataV] * len(mixing_type_options)
-  new_retrain_dataV_list = ['1g4e' if nR else '' for nR in new_retrain_dataV]
+  if not isinstance(H_type, list): H_type = [H_type] * len(mixing_types)
+  if not isinstance(new_retrain_dataV, list): new_retrain_dataV = [new_retrain_dataV] * len(mixing_types)
 
-  Readouts = np.zeros((11+3,len(mixing_type_options)*2))
+  Readouts = []
   
-  for id_mix,mix_type in enumerate(mixing_type_options):
+  for id_mix,mix_type in enumerate(mixing_types):
     H_type_it = H_type[id_mix]
-    if mix_type=='[]': mix_type=[]
     #you will have the half_MNIST_gen_option active (True)
     #only if your mixing type is not origMNIST
-    half_MNIST_gen_option = mix_type != 'origMNIST'
-
-    Retrain_ds,Retrain_test_ds,mix_retrain_ds = get_retraining_data(MNIST_train_dataset,{},dbn, classifier,100,  ds_type = retr_DS, Type_gen = mix_type, correction_type = 'frequency')
-
-    if mix_type=='[]':
-      R = readout_epoch0_1andHalfBatches(dbn,Retrain_ds,Retrain_test_ds,MNIST_train_dataset,MNIST_test_dataset, mix_ds = [])
-    else:
-      R = readout_epoch0_1andHalfBatches(dbn,Retrain_ds,Retrain_test_ds,MNIST_train_dataset,MNIST_test_dataset, mix_ds = mix_retrain_ds)
-    i_Retr = [0,2,4]
-    i_MNIST = [1,3,5]
-    Readouts[:3,id_mix+len(mixing_type_options)] = [R[i] for i in i_Retr]
-    Readouts[:3,id_mix] = [R[i] for i in i_MNIST]
-    if mix_type==[]:
-      mix_type='[]'
-
-    Readout_last_layer_MNIST, Readout_last_layer_RETRAINING_DS,_ = relearning(retrain_ds_type = retr_DS, mixing_type =mix_type, n_steps_generation=100, new_rdata_epochs = new_retrain_dataV[id_mix], correction_type = 'other', l_par = 1, last_layer_sz=1000, H_type = H_type_it)
-    Readouts[3:,id_mix] = Readout_last_layer_MNIST
-    Readouts[3:,id_mix+len(mixing_type_options)] = Readout_last_layer_RETRAINING_DS
-
-  D_names = {'[]':'seq', 'origMNIST': 'int_orig', 'chimeras':'int_chim', 'lbl_bias': 'int_LB'}
-
-  # Define column names
-  columns = ['MNIST ' + D_names[m] + '_H' + h +'_'+ nR for m, h,nR in zip(mixing_type_options, H_type,new_retrain_dataV_list)] + [retr_DS +' '+ D_names[m] + '_H' + h +'_'+ nR for m, h,nR in zip(mixing_type_options, H_type,new_retrain_dataV_list)]
-
-  # Convert NumPy array to Pandas DataFrame
-  df = pd.DataFrame(Readouts, columns=columns)
-  
-  # Save DataFrame to Excel file
-  tipo = ['M'+D_names[m] + '_H' + h +'_'+ nR for m, h,nR in zip(mixing_type_options, H_type,new_retrain_dataV_list)]
+    relearning_df, _ = relearning(retrain_ds_type = retr_DS, mixing_type =mix_type, n_steps_generation=100,
+                                  new_rdata_epochs = new_retrain_dataV[id_mix], correction_type = None,
+                                  last_layer_sz=1000, H_type = H_type_it)
+    Readouts.append(relearning_df)
+  Readouts = reduce(lambda left,right: pd.merge(left,right,on='retrain epoch'), Readouts)
+  D_names = {'[]':'seq', 'origMNIST': 'int_orig', 'chimeras':'int_chim', 'lbl_bias': 'int_LB', 'rand': 'int_rand'}
+  tipo = ['M'+D_names[m] + '_H' + h  for m, h in zip(mixing_types, H_type)]
   tipo = '_'.join(tipo)
   file_path = os.path.join(root_dir, "Readouts_" + retr_DS + tipo + ".xlsx")
-
-  df.to_excel(file_path, index=False)
-  
-
-  ix = [0,1,2,4,5,6,7,8,9,10,11,12,13]
-  plot_relearning(Readouts[ix,:], yl = [0.75, 1], legend_labels = [])
+  Readouts.to_excel(file_path, index=False)
+  y_r = [0.1, 1] if retr_DS == 'fMNIST' else [0.75, 1]
+  plot_relearning(Readouts.iloc[range(1,Readouts.shape[0]),:],yl = y_r)
 
   return Readouts

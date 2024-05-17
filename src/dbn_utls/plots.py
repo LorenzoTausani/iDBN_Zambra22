@@ -178,41 +178,28 @@ def hist_pixel_act(avg_pixels_active_TrainMNIST,avg_activity_sampled_data,avg_ac
     plt.legend()
     plt.show()
 
-def plot_relearning(Readouts, yl = [0.75, 1],lab_sz = 50, leg_on =1, 
-                    legend_labels=['Sequential learning', 'Interleaved learning - experience replay', 'Interleaved learning - generative replay']):
-    # Assuming your matrix is named 'my_matrix'
-    # Generate x-axis ticks from 0 to 100 with steps of 5
-    x_ticks = np.concatenate((np.array([0,0.5,1]), np.arange(5, 51, 5)))
-    my_matrix = Readouts
-    nCols = Readouts.shape[1]//2    
-    # Separate the matrix into subsets of columns
-    subset1 = my_matrix[:, :nCols]
-    subset2 = my_matrix[:, -nCols:] 
-    # Create a figure and axes
+def plot_relearning(Readouts, yl = [0.1, 1],lab_sz = 50, leg_on =1, linewidth = 4, 
+                    legend_dict = {'seq':'Sequential learning', 'int_origMNIST': 'Interleaved learning - experience replay', 
+                    'int_chimeras': 'Interleaved learning - generative replay', 'int_rand': 'Interleaved learning - random'}):
+    dotting = {'seq':'-', 'int_origMNIST': '--', 'int_chimeras': ':', 'int_rand': '-.'}
     fig, ax = plt.subplots(figsize = (20,20))
     plt.gca().yaxis.set_major_formatter(StrMethodFormatter('{x:,.2f}')) 
-    # Plot each column of the first subset with red color and different line styles
-    for i, column in enumerate(subset1.T):
-        line_style = ['-', '--', ':'][i % nCols]  # Cycle through line styles
-        ax.plot(x_ticks, column, color='red', linestyle=line_style, lw=4)   
-    # Plot each column of the second subset with blue color and different line styles
-    for i, column in enumerate(subset2.T):
-        line_style = ['-', '--', ':'][i % nCols]  # Cycle through line styles
-        ax.plot(x_ticks, column, color='blue', linestyle=line_style, lw=4)  
-    #x_ticks_l = ['1b', 'N/2b', '1']+[str(i) for i in range(5, 51, 5)]  
-    # Set the x-axis ticks
-    ax.set_xticks(np.arange(0, 51, 5))  
-    # Set labels and title with increased font size
+    
+    vars = Readouts.columns.tolist()
+    for v in vars:
+        if not(v=='retrain epoch'):
+            lbl_dot = [[l, dotting[k]] for k,l in legend_dict.items() if k in v]
+            lbl_dot = lbl_dot[0] if len(lbl_dot)>0 else [v,'-']
+            c= 'r' if any(p == 'MNIST' for p in v.split('_')) else 'b'
+            ax.plot(Readouts['retrain epoch'], Readouts[v], label=lbl_dot[0], 
+                    color = c, linestyle = lbl_dot[1], lw=linewidth)
     ax.set_xlabel('Retraining epoch', fontsize=lab_sz)
     ax.set_ylabel('Readout', fontsize=lab_sz)
     ax.set_ylim(yl) 
-    # Create the legend
-    if legend_labels == []:
-        legend_labels = ['Sequential learning', 'Interleaved learning - experience replay',  'Interleaved learning - generative replay']
-    legend_handles = [plt.Line2D([], [], color='black', linestyle=style) for style in ['-', '--', ':']]
+
+    legend_labels = list(legend_dict.values())
+    legend_handles = [plt.Line2D([], [], color='black', linestyle=style, lw=linewidth) for style in ['-', '--', ':']]
     if leg_on ==1:
-        ax.legend(legend_handles, legend_labels, loc='upper center', bbox_to_anchor=(0.5, -0.15), fontsize=lab_sz, ncol=len(legend_labels)//2)    
-    # Increase tick label font size
-    ax.tick_params(labelsize=lab_sz)    
-    # Show the plot
+        ax.legend(legend_handles, legend_labels, loc='upper center', bbox_to_anchor=(0.5, -0.15), fontsize=lab_sz, ncol=1)         
+    ax.tick_params(labelsize=lab_sz)       
     plt.show()
