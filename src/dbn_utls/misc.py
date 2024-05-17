@@ -41,7 +41,10 @@ def set_root_dir():
     if is_colab:
         from google.colab import drive
         drive.mount('/content/gdrive')
-    roots = read_json(path = "roots.json")
+        json_path = "iDBN_Zambra22/roots.json"
+    else:
+        json_path = "roots.json"
+    roots = read_json(path = json_path)
     root_dir = roots["root_colab"] if is_colab else roots["root_local"]
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     return root_dir,DEVICE,is_colab
