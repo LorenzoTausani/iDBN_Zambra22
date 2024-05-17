@@ -41,7 +41,7 @@ def set_root_dir():
     if is_colab:
         from google.colab import drive
         drive.mount('/content/gdrive')
-        json_path = "iDBN_Zambra22/roots.json"
+        json_path = "/content/iDBN_Zambra22/roots.json"
     else:
         json_path = "roots.json"
     roots = read_json(path = json_path)
