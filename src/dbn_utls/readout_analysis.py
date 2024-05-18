@@ -1,4 +1,5 @@
 from collections import defaultdict
+from datetime import datetime
 from functools import reduce
 import random
 from tqdm import tqdm
@@ -180,12 +181,12 @@ def get_retraining_data(MNIST_train_dataset, train_ds_retraining = {}, dbn=[], c
     #This is the distribution of avg pixels active in the MNIST train dataset
     avg_pixels_active_TrainMNIST = torch.cat([torch.mean(batch, axis=1) for batch in MNIST_train_dataset['data']])
 
-  root = '/content/gdrive/My Drive/ZAMBRA_DBN/'
   #load EMNIST byclass data
   if not(bool(train_ds_retraining)):
     try:
-      train_ds_retraining = load_NPZ_dataset(os.path.join(root,'dataset_dicts',f'train_dataset_{ds_type}.npz'), nr_batches_retraining)
-      test_ds_retraining = load_NPZ_dataset(os.path.join(root,'dataset_dicts',f'test_dataset_{ds_type}.npz'))
+      train_ds_retraining = load_NPZ_dataset(os.path.join(root_dir,'dataset_dicts',f'train_dataset_{ds_type}.npz'), nr_batches_retraining)
+      test_ds_retraining = load_NPZ_dataset(os.path.join(root_dir,'dataset_dicts',f'test_dataset_{ds_type}.npz'))
+      
     except:
       transform =transforms.Compose([transforms.ToTensor()])
       if ds_type == 'EMNIST':
@@ -206,12 +207,12 @@ def get_retraining_data(MNIST_train_dataset, train_ds_retraining = {}, dbn=[], c
       #i select just 20000 examples (19968 per l'esattezza)
       train_ds_retraining = {'data': train_data_retraining_ds[:nr_batches_retraining,:,:], 'labels': train_labels_retraining_ds[:nr_batches_retraining,:,:]}
       test_ds_retraining = {'data': test_data_retraining_ds, 'labels': test_labels_retraining_ds}
-
+    
     retraining_ds = {'train':train_ds_retraining, 'test':test_ds_retraining}
     if dbn==[]:
         return retraining_ds
     
-  if not(Type_gen in ['chimeras','lbl_bias','rand']):
+  if Type_gen in ['origMNIST','[]']:
     half_MNIST = MNIST_train_dataset['data'][:half_batches,:,:].to('cuda')
   else:
     dbn.invW4LB(MNIST_train_dataset)
@@ -233,11 +234,15 @@ def get_retraining_data(MNIST_train_dataset, train_ds_retraining = {}, dbn=[], c
       _, visible_states = multiple_chimeras(Ian.model, classifier, sample_nr = n_samples, Ian = Ian, 
                   nr_gen_steps = n_steps_generation, topk = k, gather_visits = False, gather_visible = True)
     
-    elif Type_gen == 'rand':
+    elif 'rand' in Type_gen:
       Mean, _ = Perc_H_act(dbn, LB_labels, gen_data_dictionary=dict_DBN_lBias_classic, 
                           layer_of_interest=2, plot = False)
-      k = int((torch.mean(Mean, axis=0)[0]*dbn.top_layer_size)/100)
-      R_hidden = dbn.random_hidden_bias(topk = k, size= LB_hidden.shape, discrete = True)
+      r_parts = Type_gen.split('_')
+      rand_discrete = True if len(r_parts)>1 else False
+      if len(r_parts)==1:
+        r_parts.append('r')
+      k = int((torch.mean(Mean, axis=0)[0]*dbn.top_layer_size)/100) if not(r_parts[1].isdigit()) else int(r_parts[1])
+      R_hidden = dbn.random_hidden_bias(topk = k, size= LB_hidden.shape, discrete = rand_discrete) #topk = k
       dict_DBN_R = dbn.generate_from_hidden(R_hidden, nr_gen_steps=n_steps_generation)
       visible_states = dict_DBN_R['vis_states']
       
@@ -323,7 +328,7 @@ def relearning(retrain_ds_type = 'EMNIST', mixing_type: MixingType = '[]', n_ste
     readout_acc_V_RETRAIN_DS,_ = readout_V_to_Hlast(dbn,retraining_ds['train'],retraining_ds['test']) 
     readout = {0: {digit_key:readout_acc_V_DIGITS, retrainDS_key:readout_acc_V_RETRAIN_DS}}
     #first epoch readout
-    ep_1_batches = [1,78,156]
+    ep_1_batches = np.linspace(1, Xtrain.shape[0], ep_1_equisp_batches).astype(int)
     for b_nr in ep_1_batches:
       readout_acc_V_RETRAIN_DS, readout_acc_V_DIGITS, current_retraining_epoch = epoch1_readout(retraining_ds,MNISTtrain_ds,
                                                                                   MNISTtest_ds,train_with_mix = True, nr_b = b_nr)
@@ -416,7 +421,7 @@ for lp in EMNIST_prototypes:
 '''
 
 def readout_comparison(mixing_types = ['[]','origMNIST', 'chimeras'], retr_DS = 'fMNIST', 
-                      H_type = ['det', 'det', 'det'], new_retrain_dataV = [None, None, None]):
+                      H_type = 'det', new_retrain_dataV = None):
     
   if not isinstance(H_type, list): H_type = [H_type] * len(mixing_types)
   if not isinstance(new_retrain_dataV, list): new_retrain_dataV = [new_retrain_dataV] * len(mixing_types)
@@ -432,12 +437,13 @@ def readout_comparison(mixing_types = ['[]','origMNIST', 'chimeras'], retr_DS = 
                                   last_layer_sz=1000, H_type = H_type_it)
     Readouts.append(relearning_df)
   Readouts = reduce(lambda left,right: pd.merge(left,right,on='retrain epoch'), Readouts)
-  D_names = {'[]':'seq', 'origMNIST': 'int_orig', 'chimeras':'int_chim', 'lbl_bias': 'int_LB', 'rand': 'int_rand'}
-  tipo = ['M'+D_names[m] + '_H' + h  for m, h in zip(mixing_types, H_type)]
-  tipo = '_'.join(tipo)
-  file_path = os.path.join(root_dir, "Readouts_" + retr_DS + tipo + ".xlsx")
-  Readouts.to_excel(file_path, index=False)
+  retr_path = os.path.join(root_dir,'retraining_exps')
+  if not os.path.exists(retr_path):
+      os.makedirs(retr_path)
+  now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  Readouts.to_excel(os.path.join(retr_path, f"retr_readouts_{now_str}.xlsx"), index=False)
   y_r = [0.1, 1] if retr_DS == 'fMNIST' else [0.75, 1]
-  plot_relearning(Readouts.iloc[range(1,Readouts.shape[0]),:],yl = y_r)
+  img_path = os.path.join(retr_path, f"retr_readouts_{now_str}.png")
+  plot_relearning(Readouts.iloc[range(1,Readouts.shape[0]),:],yl = y_r, outpath = img_path)
 
   return Readouts

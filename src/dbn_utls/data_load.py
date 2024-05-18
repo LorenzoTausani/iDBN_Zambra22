@@ -12,6 +12,8 @@ from tqdm import tqdm
 from os import path 
 import json
 from pathlib import Path
+
+from zmq import device
 from src.dbn_utls.misc import relabel_09, reshape_data, MyDataset, set_root_dir
 import src.dbn_utls.dbns as dbns
 from src.dbn_utls.dbns import *
@@ -376,7 +378,7 @@ def classifier_loader(dbn,train_dataset_original, test_dataset_original, selecte
 def load_NPZ_dataset(ds_filepath, nr_batches_retraining: None|int = None):
     dataset = dict(np.load(ds_filepath))
     # Convert the numpy arrays to torch tensors
-    dataset = {k: torch.from_numpy(v) for k, v in dataset.items()}
+    dataset = {k: torch.from_numpy(v).to(DEVICE) for k, v in dataset.items()}
     if nr_batches_retraining is not None:
         dataset = {'data': dataset['data'][:nr_batches_retraining, :, :], 'labels': dataset['labels'][:nr_batches_retraining, :, :]}
     return dataset

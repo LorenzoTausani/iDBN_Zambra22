@@ -1,3 +1,4 @@
+import re
 import numpy as np
 import math
 import random
@@ -180,7 +181,8 @@ def hist_pixel_act(avg_pixels_active_TrainMNIST,avg_activity_sampled_data,avg_ac
 
 def plot_relearning(Readouts, yl = [0.1, 1],lab_sz = 50, leg_on =1, linewidth = 4, 
                     legend_dict = {'seq':'Sequential learning', 'int_origMNIST': 'Interleaved learning - experience replay', 
-                    'int_chimeras': 'Interleaved learning - generative replay', 'int_rand': 'Interleaved learning - random'}):
+                    'int_chimeras': 'Interleaved learning - generative replay', 'int_rand': 'Interleaved learning - random'},
+                    outpath = None):
     dotting = {'seq':'-', 'int_origMNIST': '--', 'int_chimeras': ':', 'int_rand': '-.'}
     fig, ax = plt.subplots(figsize = (20,20))
     plt.gca().yaxis.set_major_formatter(StrMethodFormatter('{x:,.2f}')) 
@@ -196,10 +198,30 @@ def plot_relearning(Readouts, yl = [0.1, 1],lab_sz = 50, leg_on =1, linewidth = 
     ax.set_xlabel('Retraining epoch', fontsize=lab_sz)
     ax.set_ylabel('Readout', fontsize=lab_sz)
     ax.set_ylim(yl) 
-
-    legend_labels = list(legend_dict.values())
-    legend_handles = [plt.Line2D([], [], color='black', linestyle=style, lw=linewidth) for style in ['-', '--', ':']]
+    
+    legend_dotting = {v:dotting[k] for k,v in legend_dict.items()}
+    legend_labels = list(legend_dotting.keys())
+    legend_handles = [plt.Line2D([], [], color='black', linestyle=style, lw=linewidth) for style in legend_dotting.values()]
     if leg_on ==1:
         ax.legend(legend_handles, legend_labels, loc='upper center', bbox_to_anchor=(0.5, -0.15), fontsize=lab_sz, ncol=1)         
-    ax.tick_params(labelsize=lab_sz)       
+    ax.tick_params(labelsize=lab_sz)   
+    if outpath:
+        fig.savefig(outpath)  
+    plt.show()
+    
+    
+def plot_end_readout(Readout, mix_types=['rand, chimeras']):
+    R_end = Readout.iloc[-1]
+    result_dict = {}
+    for column_name in R_end.index:
+        parts = column_name.split('_')
+        if 'rand' in column_name:
+            return column_name
+        if parts[0] == 'MNIST' and any(mt in column_name for mt in mix_types):
+            k = parts[2] if len(parts)<5 else parts[2]+'_'+parts[3] #difference betw rand_k and others
+            result_dict[k] = R_end[column_name]
+    sorted_dict = dict(sorted(result_dict.items(), key=lambda item: int(re.search(r'\d+', item[0]).group()) if re.search(r'\d+', item[0]) else 0))
+
+    plt.plot(list(sorted_dict.keys()), list(sorted_dict.values()))
+    plt.xticks(rotation=45)
     plt.show()

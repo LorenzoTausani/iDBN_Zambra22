@@ -210,6 +210,15 @@ class RBM(torch.nn.Module):
         
         return self.act_topdown
     #end
+    
+    def energy_f(self, hid_states, vis_states):
 
-        
+            sum_h_v_W = torch.zeros(hid_states.size()[0],1).to(self.DEVICE)
+            m1=torch.matmul(vis_states,self.W)
+            m2 = torch.matmul(m1,torch.transpose(hid_states,0,1))
+            sum_h_v_W = torch.diagonal(m2*torch.eye(m2.size()[0]).to(self.DEVICE))
+            state_energy = -torch.matmul(vis_states,torch.transpose(self.a,0,1)) - torch.matmul(hid_states,torch.transpose(self.b,0,1)) -sum_h_v_W.unsqueeze(1)
+            
+            return state_energy
+
 #end
