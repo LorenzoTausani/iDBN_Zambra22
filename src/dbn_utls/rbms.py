@@ -211,14 +211,13 @@ class RBM(torch.nn.Module):
         return self.act_topdown
     #end
     
-    def energy_f(self, hid_states, vis_states):
+    def energy_f(self, vis_states, hid_states, DEVICE = 'cuda'):
+            sample_nr = hid_states.size()[0]
+            vWh=torch.matmul(torch.matmul(vis_states,self.W.T),hid_states.T)
+            #i select the diagonal of the matrix, given that these are the only elements resulting 
+            # from matmul of v,h of the same sample
+            vWh = torch.diagonal(vWh*torch.eye(sample_nr).to(DEVICE))
+            state_energy = -torch.matmul(vis_states,torch.transpose(self.a,0,1)) - torch.matmul(hid_states,torch.transpose(self.b,0,1)) -vWh.unsqueeze(1)
 
-            sum_h_v_W = torch.zeros(hid_states.size()[0],1).to(self.DEVICE)
-            m1=torch.matmul(vis_states,self.W)
-            m2 = torch.matmul(m1,torch.transpose(hid_states,0,1))
-            sum_h_v_W = torch.diagonal(m2*torch.eye(m2.size()[0]).to(self.DEVICE))
-            state_energy = -torch.matmul(vis_states,torch.transpose(self.a,0,1)) - torch.matmul(hid_states,torch.transpose(self.b,0,1)) -sum_h_v_W.unsqueeze(1)
-            
             return state_energy
-
 #end

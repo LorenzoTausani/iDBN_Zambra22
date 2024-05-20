@@ -265,7 +265,19 @@ class DBN(torch.nn.Module):
             c=c+1
         return hid_prob,hid_states,vis_prob,vis_states
     
-    def generate_from_hidden(self, input_hid_prob, nr_gen_steps: int=1):
+    def dbn_energy(self, result_dict):
+        nr_samples,_,nr_gens = result_dict['vis_states'].shape
+        E = torch.zeros(self.depth,nr_samples,nr_gens)
+        for g in range(nr_gens):
+            for d in range(self.depth):
+                rbm = self.rbm_layers[d]
+                V = result_dict['vis_states'][:, :, g] if d == 0 else result_dict['hid_states'][d-1,:, :rbm.Nin, g]
+                H = result_dict['hid_states'][d, :, :rbm.Nout, g]
+                E[d,:,g] = rbm.energy_f(V,H).squeeze()
+        result_dict['energy'] = E
+        return result_dict
+
+    def generate_from_hidden(self, input_hid_prob, nr_gen_steps: int=100):
         #DOVREBBE ESSERE UGUALE A ZAMBRA, ma manca un controllo deterministico causa
         #samping bernoulliano. controlla che tornino i risultati di generazione
         #input_hid_prob has size Nr_hidden_units x num_cases. Therefore i transpose it
@@ -296,6 +308,7 @@ class DBN(torch.nn.Module):
                 hid_prob[self.idx_max_depth,:,:,gen_step]  = p_v 
                 hid_states[self.idx_max_depth,:,:,gen_step]  = v
             hid_prob,hid_states,vis_prob,vis_states = self.top_down_1step(gen_step,hid_prob,hid_states,vis_prob,vis_states)
+            
                     
         #the result dict will contain the output of the whole generation process
         result_dict = dict(); 
@@ -303,8 +316,10 @@ class DBN(torch.nn.Module):
         result_dict['vis_states'] = vis_states
         result_dict['hid_prob'] = hid_prob
         result_dict['vis_prob'] = vis_prob
+        result_dict = self.dbn_energy(result_dict)
 
         return result_dict
+    
         
 class gDBN(DBN):
     

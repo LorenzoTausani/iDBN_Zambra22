@@ -244,7 +244,7 @@ def Multiclass_dataset(train_ds, selected_idx = [20,31], for_classifier = False,
         return new_Train_data, new_Cat_labels
     
     
-def tool_loader_ZAMBRA(selected_idx = [], only_data = True,classifier_yn = True, last_layer_sz = 1000, Load_DBN_yn = 3):
+def tool_loader_ZAMBRA(selected_idx = [], only_data = False,classifier_yn = True, last_layer_sz = 1000, Load_DBN_yn = 3):
     #load the various files necessary
     with open(path.join(root_dir, 'cparams.json'), 'r') as filestream:
         CPAR = json.load(filestream)
