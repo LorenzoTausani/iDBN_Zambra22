@@ -6,6 +6,7 @@ from matplotlib import pyplot as plt
 from matplotlib import cm
 from matplotlib.ticker import StrMethodFormatter
 import seaborn as sns
+from sklearn.decomposition import PCA
 import torch
 
 
@@ -225,3 +226,21 @@ def plot_end_readout(Readout, mix_types=['rand, chimeras']):
     plt.plot(list(sorted_dict.keys()), list(sorted_dict.values()))
     plt.xticks(rotation=45)
     plt.show()
+    
+    
+def PCA_average(time_neuron_avg, n_components=2, title = None):
+    pca = PCA(n_components=n_components)
+    pca.fit(time_neuron_avg)
+    pca_timeseries = pca.transform(time_neuron_avg)
+    explained_variance = pca.explained_variance_ratio_
+    if n_components == 2:
+        colors = np.linspace(1, pca_timeseries.shape[0]+1, pca_timeseries.shape[0])
+        scatter = plt.scatter(pca_timeseries[:,0], pca_timeseries[:,1], c=colors, cmap='gray_r', edgecolors='black')
+        plt.xlabel(f'PC1 - explained var: {explained_variance[0]:.2f} %')
+        plt.ylabel(f'PC2 - explained var: {explained_variance[1]:.2f} %')
+        cbar = plt.colorbar(scatter)
+        cbar.set_label('Gen steps')
+        if title:
+            plt.title(title)
+        plt.show()
+    return pca_timeseries, explained_variance

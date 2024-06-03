@@ -1,3 +1,4 @@
+from collections import defaultdict
 from tqdm import tqdm #tqdm is a Python library that provides a way to create progress bars for loops and iterators, 
 #making it easier to track the progress of lengthy operations.
 import numpy as np
@@ -36,10 +37,10 @@ class Intersection_analysis:
     
     def generate_chimera(self,classifier, cats2intersect = [8,2], sample_nr = 1000, plot=0):
       #this function does generation from chimeras obtained with the intersection method
-      cats2intersect= sorted(cats2intersect)
       biasing_vecs =torch.zeros(sample_nr,self.model.top_layer_size) 
       if not(cats2intersect =='rand'): #if you don't want to generate from random chimeras
         #activate the entries corresponding the intersection units of interest
+        cats2intersect= sorted(cats2intersect)
         biasing_vecs[:,self.intersections[f"{cats2intersect[0]},{cats2intersect[1]}"]]=1
       else: #cats2intersect = 'rand'
         for i in range(sample_nr): #for every sample you want to generate
@@ -70,12 +71,14 @@ def multiple_chimeras(model, classifier, sample_nr, Ian: Intersection_analysis| 
             'Non_digit_mat': np.zeros((n_digits, n_digits)),
             'Non_digit_err': np.zeros((n_digits, n_digits))}
   visible_states = []
-  
+  generated_data_avg = defaultdict(dict)
   #loop for every combination of classes
   for row, col in combinations_of_two:
     if Ian is not None: #intersection method
       d, df_average,df_sem, _ = Ian.generate_chimera(classifier,cats2intersect = [row,col],
                                     sample_nr = sample_nr,plot=0)
+      for k in ['hid_prob','hid_states']:
+          generated_data_avg[f"{row},{col}"][k]= torch.mean(d[k][-1,:,:,:],axis=0)
     else: #double label biasing
       LB2_hidden = model.getH_label_biasing(on_digits=[row,col], topk=topk)
       LB2_hidden = LB2_hidden.repeat(1,sample_nr/n_digits)
@@ -96,7 +99,7 @@ def multiple_chimeras(model, classifier, sample_nr, Ian: Intersection_analysis| 
   if gather_visible:
     visible_states = torch.cat(visible_states, dim=0)
     
-  return states_stats, visible_states
+  return states_stats, visible_states,generated_data_avg
 
 
 def Chimeras_nr_visited_states(model, classifier, Ian = None, topk=-1, apprx=1,plot=1,compute_new=1,
@@ -105,8 +108,8 @@ def Chimeras_nr_visited_states(model, classifier, Ian = None, topk=-1, apprx=1,p
     Chim_type = '2LB' if Ian is None else 'Int'
     
     if compute_new==1:
-      states_stats, _ = multiple_chimeras(model, classifier, sample_nr = nr_sample_generated, Ian = Ian, 
-                        nr_gen_steps = nr_gen_steps, topk = topk, gather_visits = False, gather_visible = False)
+      states_stats, _ ,_= multiple_chimeras(model, classifier, sample_nr = nr_sample_generated, Ian = Ian, 
+                        nr_gen_steps = nr_gen_steps, topk = topk, gather_visits = True, gather_visible = False)
       
       for k, v in states_stats.items():
         fN = f"{k}_topk{topk}_{Chim_type}.xlsx"

@@ -231,7 +231,7 @@ def get_retraining_data(MNIST_train_dataset, train_ds_retraining = {}, dbn=[], c
       Ian = Intersection_analysis(dbn, top_k_Hidden=k,nr_steps=n_steps_generation)
       Ian.do_intersection_analysis()
       n_samples = math.ceil((sample_sz/2)*coeff/(len(Ian.intersections.keys())*n_steps_generation))
-      _, visible_states = multiple_chimeras(Ian.model, classifier, sample_nr = n_samples, Ian = Ian, 
+      _, visible_states, _ = multiple_chimeras(Ian.model, classifier, sample_nr = n_samples, Ian = Ian, 
                   nr_gen_steps = n_steps_generation, topk = k, gather_visits = False, gather_visible = True)
     
     elif 'rand' in Type_gen:
