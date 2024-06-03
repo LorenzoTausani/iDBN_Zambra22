@@ -228,7 +228,7 @@ def plot_end_readout(Readout, mix_types=['rand, chimeras']):
     plt.show()
     
     
-def PCA_average(time_neuron_avg, n_components=2, title = None):
+def PCA_average(time_neuron_avg, n_components=2, title = None, out_dir = None):
     pca = PCA(n_components=n_components)
     pca.fit(time_neuron_avg)
     pca_timeseries = pca.transform(time_neuron_avg)
@@ -242,5 +242,7 @@ def PCA_average(time_neuron_avg, n_components=2, title = None):
         cbar.set_label('Gen steps')
         if title:
             plt.title(title)
+        if out_dir:
+            plt.savefig(out_dir)
         plt.show()
     return pca_timeseries, explained_variance

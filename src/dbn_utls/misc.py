@@ -1,4 +1,5 @@
 import json
+import os
 import random
 from typing import Any
 import numpy as np
@@ -180,3 +181,9 @@ def raddrizza_lettere(data_train_retraining_ds,data_test_retraining_ds):
     data_train_retraining_ds = data_train_retraining_L
     
     
+def make_dir(dir):
+    directory = dir
+    directory = os.path.expanduser(directory)  # Expand the '~' to the user's home directory
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    return directory
