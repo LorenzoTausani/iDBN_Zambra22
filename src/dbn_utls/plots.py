@@ -1,4 +1,5 @@
 import re
+from matplotlib.lines import Line2D
 import numpy as np
 import math
 import random
@@ -8,6 +9,9 @@ from matplotlib.ticker import StrMethodFormatter
 import seaborn as sns
 from sklearn.decomposition import PCA
 import torch
+
+from src.dbn_utls.Study_generativity import Intersection_analysis, multiple_chimeras
+from src.dbn_utls.misc import make_dir
 
 
 def Plot_example_generated(input_dict,num_classes = 10,row_step = 10, dS=50, lblpad = 110, custom_steps = True, Show_classification = False, not_random_idxs = True):
@@ -236,8 +240,8 @@ def PCA_average(time_neuron_avg, n_components=2, title = None, out_dir = None):
     if n_components == 2:
         colors = np.linspace(1, pca_timeseries.shape[0]+1, pca_timeseries.shape[0])
         scatter = plt.scatter(pca_timeseries[:,0], pca_timeseries[:,1], c=colors, cmap='gray_r', edgecolors='black')
-        plt.xlabel(f'PC1 - explained var: {explained_variance[0]:.2f} %')
-        plt.ylabel(f'PC2 - explained var: {explained_variance[1]:.2f} %')
+        plt.xlabel(f'PC1 - explained var: {explained_variance[0]*100:.2f} %')
+        plt.ylabel(f'PC2 - explained var: {explained_variance[1]*100:.2f} %')
         cbar = plt.colorbar(scatter)
         cbar.set_label('Gen steps')
         if title:
@@ -246,3 +250,77 @@ def PCA_average(time_neuron_avg, n_components=2, title = None, out_dir = None):
             plt.savefig(out_dir)
         plt.show()
     return pca_timeseries, explained_variance
+
+
+def plot_pca_between(avg_trials_pca,explained_variance, keys_of_interest = ['digits', '4,9', 'R']):
+    
+    if 'digits' in keys_of_interest:
+        keys_of_interest.remove('digits')
+        keys_of_interest.extend([str(j) for j in range(10)])
+            
+    cmap = plt.cm.get_cmap('jet', len(keys_of_interest))
+    nr_gens = avg_trials_pca['R'].shape[0]
+    legend_elements = []
+    for i, key in enumerate(keys_of_interest):
+        alphas = np.linspace(0.25, 1.0, nr_gens)
+        trial = avg_trials_pca[key]
+        for j in range(nr_gens):
+            if j == 0:
+                plt.text(trial[j,0], trial[j,1], key, color=cmap(i), fontsize=12)
+            else:
+                plt.scatter(trial[j,0], trial[j,1], c=[cmap(i)], alpha=alphas[j])  # inner color with varying alpha
+                plt.scatter(trial[j,0], trial[j,1], c='none', edgecolors='black')  # edge color with no alpha
+        
+
+        # Create a Line2D object for the legend
+        legend_elements.append(Line2D([0], [0], marker='o', color='w', markerfacecolor=cmap(i), markersize=10, label=key))
+
+    plt.xlabel(f'PC1 - explained var: {explained_variance[0]*100:.2f} %')
+    plt.ylabel(f'PC2 - explained var: {explained_variance[1]*100:.2f} %')
+    plt.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=5)
+    plt.show()       
+    
+def study_trajectories_version2(dbn, classifier, nr_gen_steps =100, topk_R = 63, topk_C_int = 111):
+    directory = make_dir("~/Documents/GitHub/iDBN_Zambra22/pca_trajectories")
+    avg_trials = {}
+    all_trials = []
+    all_labels = []
+    #Label biasing
+    hidden,lbls=dbn.label_biasing()
+    result_dict = dbn.generate_from_hidden(hidden,nr_gen_steps =nr_gen_steps)
+
+    for digit in range(dbn.Num_classes):
+        idxs = lbls == digit
+        timeseries = result_dict['hid_prob'][-1,idxs,:,:].cpu().numpy()
+        timeseries = np.mean(timeseries, axis=0).T
+        avg_trials[f'{digit}'] = timeseries
+        all_trials.append(timeseries)
+        all_labels.append(f'{digit}')
+        
+    #random biasing
+    hidden_R=dbn.random_hidden_bias(topk = topk_R, size=(1000, 100), discrete = True)
+    result_dict = dbn.generate_from_hidden(hidden_R,nr_gen_steps =nr_gen_steps)
+    timeseries = result_dict['hid_prob'][-1,:,:,:].cpu().numpy()
+    timeseries = np.mean(timeseries, axis=0).T
+    avg_trials['R'] = timeseries
+    all_trials.append(timeseries)
+    all_labels.append('R')
+    #intersection chimeras
+    i_an = Intersection_analysis(dbn, top_k_Hidden=topk_C_int, nr_steps=100)
+    i_an.do_intersection_analysis()
+    _, _ , generated_dict = multiple_chimeras(dbn, classifier, sample_nr = 100, Ian = i_an, 
+                            nr_gen_steps = nr_gen_steps, topk = topk_C_int, gather_visits = True, gather_visible = False)
+    for k,v in generated_dict.items():
+        for k2,v2 in v.items():
+            if k2 == 'hid_prob':
+                v2 = v2.T.cpu().numpy()
+                avg_trials[k] = v2
+                all_trials.append(v2)
+                all_labels.append(k)
+    n_trials = len(avg_trials)
+    all_trials =  np.concatenate(list(avg_trials.values()), axis=0)    
+    pca_timeseries, explained_variance = PCA_average(all_trials, n_components=2, title = f'All')
+    trials = np.array_split(pca_timeseries, n_trials)
+    avg_trials_pca = {k:trials[i] for i,k in enumerate(avg_trials.keys())} 
+    
+    return avg_trials_pca,explained_variance
